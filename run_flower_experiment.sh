@@ -43,8 +43,11 @@ PROJECT_ROOT="$SCRIPT_DIR"
 FLOWER_APP_DIR="$PROJECT_ROOT/Long-term_Forecasting/flower_app"
 
 ################################################################################
-# Default Parameters
+# Default Parameters (can be overridden by config file or command-line args)
 ################################################################################
+
+# Path to config file (can be set via --config argument)
+CONFIG_FILE=""
 
 # Federated Learning Parameters (--run-config)
 NUM_ROUNDS=10
@@ -67,6 +70,9 @@ LORA_R=8
 LORA_ALPHA=16
 LORA_DROPOUT=0.0  # No dropout for LoRA
 DROPOUT=0.15  # Model dropout for regularization (default: 0.15)
+
+# Conda environment
+CONDA_ENV=flwr39
 
 # Setup Options
 SKIP_SETUP=true  # Default: skip setup (faster)
@@ -106,6 +112,11 @@ print_error() {
 usage() {
     cat << EOF
 Usage: $0 [OPTIONS]
+
+Configuration:
+    --config FILE             Load parameters from config file (default: experiment_config.conf)
+                             Config file values override script defaults.
+                             Command-line arguments override config file.
 
 Setup Options:
     --setup                   Run full environment setup (Python, CUDA, venv checks)
@@ -150,26 +161,59 @@ Other Options:
     -h, --help                Show this help message
 
 Examples:
-    # Quick test run (default: skip setup)
+    # Use default config file (experiment_config.conf)
+    $0
+
+    # Use custom config file
+    $0 --config my_experiment.conf
+
+    # Config file + override specific parameters
+    $0 --config experiment_config.conf --rounds 20 --pred-len 96
+
+    # Quick test (preset mode)
     $0 --mode quick
 
-    # With full environment setup
-    $0 --mode quick --setup
+    # Full training with custom parameters
+    $0 --rounds 15 --lr 0.0005 --pred-len 120 --llm-layers 6
 
-    # Custom FL parameters
-    $0 --rounds 20 --lr 0.001 --local-epochs 3
-
-    # Custom model architecture
-    $0 --seq-len 512 --pred-len 96 --d-model 256 --llm-layers 6
-
-    # Full custom configuration
-    $0 --rounds 15 --lr 0.0005 --seq-len 336 --pred-len 120 \\
-        --llm-layers 6 --lora-r 16 --batch-size 32
-
-    # Interactive mode
+    # Interactive configuration
     $0 --interactive
 
+    # With full environment setup
+    $0 --config experiment_config.conf --setup
+
 EOF
+}
+
+################################################################################
+# Load Configuration File
+################################################################################
+
+load_config() {
+    local config_file="$1"
+
+    if [ -z "$config_file" ]; then
+        # Try default config file if it exists
+        if [ -f "$SCRIPT_DIR/experiment_config.conf" ]; then
+            config_file="$SCRIPT_DIR/experiment_config.conf"
+            print_info "Loading default config: $config_file"
+        else
+            return 0  # No config file specified and no default found
+        fi
+    fi
+
+    if [ ! -f "$config_file" ]; then
+        print_error "Config file not found: $config_file"
+        exit 1
+    fi
+
+    print_info "Loading configuration from: $config_file"
+
+    # Source the config file (it's a bash script with KEY=VALUE pairs)
+    # shellcheck disable=SC1090
+    source "$config_file"
+
+    print_success "Configuration loaded successfully"
 }
 
 ################################################################################
@@ -182,6 +226,10 @@ parse_args() {
             -h|--help)
                 usage
                 exit 0
+                ;;
+            --config)
+                CONFIG_FILE="$2"
+                shift 2
                 ;;
             --setup)
                 SKIP_SETUP=false  # Explicitly enable setup
@@ -473,20 +521,20 @@ select_gpu() {
 }
 
 setup_venv() {
-    print_info "Checking conda environment 'flwr39'..."
+    print_info "Checking conda environment '$CONDA_ENV'..."
 
     # Check if conda is available
     if command -v conda &> /dev/null; then
         # Initialize conda for bash
         eval "$(conda shell.bash hook)"
 
-        # Try to activate flwr39
-        if conda activate flwr39 2>/dev/null; then
-            print_success "Conda environment 'flwr39' activated"
+        # Try to activate conda environment
+        if conda activate "$CONDA_ENV" 2>/dev/null; then
+            print_success "Conda environment '$CONDA_ENV' activated"
         else
-            print_error "Conda environment 'flwr39' not found"
-            print_info "Please create it with: conda create -n flwr39 python=3.9 -y"
-            print_info "Then install flower: conda activate flwr39 && pip install flwr[simulation]"
+            print_error "Conda environment '$CONDA_ENV' not found"
+            print_info "Please create it with: conda create -n $CONDA_ENV python=3.9 -y"
+            print_info "Then install flower: conda activate $CONDA_ENV && pip install flwr[simulation]"
             exit 1
         fi
     else
@@ -501,7 +549,7 @@ setup_venv() {
         PYTHON_PATH=$(which python3)
         print_info "Using Python from: $PYTHON_PATH"
     else
-        print_error "flwr command not found in conda environment"
+        print_error "flwr command not found in conda environment '$CONDA_ENV'"
         print_info "Please install flower: pip install flwr[simulation]"
         exit 1
     fi
@@ -813,10 +861,13 @@ run_flower() {
 main() {
     print_header "Federated Learning Experiment Setup"
 
-    # Parse arguments
+    # Parse arguments first (to get CONFIG_FILE if specified)
     parse_args "$@"
 
-    # Apply mode preset if specified
+    # Load configuration file (if specified or default exists)
+    load_config "$CONFIG_FILE"
+
+    # Apply mode preset if specified (mode overrides config file)
     if [ -n "$MODE" ]; then
         apply_mode
     fi
@@ -869,13 +920,13 @@ main() {
                 # Try to activate conda environment
                 if command -v conda &> /dev/null; then
                     eval "$(conda shell.bash hook)" 2>/dev/null
-                    conda activate flwr39 2>/dev/null && print_info "Conda environment 'flwr39' activated" || print_warning "Could not activate conda env 'flwr39'"
+                    conda activate "$CONDA_ENV" 2>/dev/null && print_info "Conda environment '$CONDA_ENV' activated" || print_warning "Could not activate conda env '$CONDA_ENV'"
                 fi
 
                 # Final check
                 if ! command -v flwr &> /dev/null; then
-                    print_error "flwr command not found. Please activate conda environment 'flwr39' first:"
-                    print_error "  conda activate flwr39"
+                    print_error "flwr command not found. Please activate conda environment '$CONDA_ENV' first:"
+                    print_error "  conda activate $CONDA_ENV"
                     exit 1
                 fi
             fi
