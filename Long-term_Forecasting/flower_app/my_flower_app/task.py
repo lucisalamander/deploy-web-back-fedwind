@@ -86,19 +86,29 @@ class Net(nn.Module):
         return self.model(x, itr=0)
 
 
-def train(net, trainloader, epochs, lr, device):
+def train(net, trainloader, epochs, lr, device, valloader=None):
     """
     Train loop expects `net` to be an instance of Net (wrapper above).
     trainloader yields dicts {"x": [B, seq_len, 1], "y": [B, pred_len, 1]}
+    Optionally evaluates on valloader after each epoch.
+    Returns:
+        avg_loss: average training loss over all epochs
+        history: list of dictionaries containing per-epoch metrics
     """
     net.to(device)
-    net.train()
+    # net.train() removed here as it is called at start of each epoch loop
     optimizer = torch.optim.AdamW(net.parameters(), lr=lr)
     criterion = nn.MSELoss()
     total_loss = 0.0
     count = 0
+    history = []
 
-    for _ in range(epochs):
+    for epoch in range(epochs):
+        epoch_loss = 0.0
+        epoch_count = 0
+        
+        # Training phase
+        net.train()
         for batch in trainloader:
             if isinstance(batch, dict):
                 x = batch["x"].to(device).float()
@@ -118,12 +128,34 @@ def train(net, trainloader, epochs, lr, device):
             loss.backward()
             optimizer.step()
 
-            total_loss += loss.item()
+            # Record batch loss
+            batch_loss = loss.item()
+            total_loss += batch_loss
+            epoch_loss += batch_loss
             count += 1
+            epoch_count += 1
+
+        avg_epoch_train_loss = epoch_loss / max(1, epoch_count)
+        
+        # Validation phase (if valloader provided)
+        metrics = {"epoch": epoch + 1, "train_loss": avg_epoch_train_loss}
+        
+        if valloader is not None:
+            # Reusing the existing test function for validation
+            # Note: test() sets net.eval(), so we ensure to set net.train() back at start of loop
+            val_loss, val_mae, val_rmse = test(net, valloader, device, return_predictions=False)
+            metrics["val_loss"] = val_loss
+            metrics["val_mae"] = val_mae
+            metrics["val_rmse"] = val_rmse
+            logging.info(f"Epoch {epoch+1}/{epochs}: TrainLoss={avg_epoch_train_loss:.6f}, ValLoss={val_loss:.6f}")
+        else:
+            logging.info(f"Epoch {epoch+1}/{epochs}: TrainLoss={avg_epoch_train_loss:.6f}")
+            
+        history.append(metrics)
 
     avg_loss = total_loss / max(1, count)
     logging.info(f"Training completed over {epochs} epochs. Average Loss: {avg_loss:.6f}")
-    return avg_loss
+    return avg_loss, history
 
 def test(net, testloader, device, return_predictions=False):
     """

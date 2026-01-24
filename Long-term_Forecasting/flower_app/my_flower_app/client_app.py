@@ -35,6 +35,12 @@ def train(msg: Message, context: Context):
     npt = context.node_config["num-partitions"]
     bs  = context.run_config.get("batch-size", 32)
     trainloader = load_client_train(pid, npt, bs=bs, cfg=configs)
+    
+    # Get experiment directory from environment variable
+    exp_dir = os.environ.get("FLOWER_EXP_DIR", ".")
+    
+    # Load validation set for tracking local overfitting
+    valloader = load_client_val(pid, bs=bs, cfg=configs)
 
     logging.info(f"[CLIENT {pid}] Training on {len(trainloader.dataset)} samples, BatchSize={bs}")
 
@@ -45,16 +51,20 @@ def train(msg: Message, context: Context):
     logging.info(f"[CLIENT {pid}] Using decayed LR={lr:.6f} (round {current_round})")
 
     train_start_time = time.time()
-    train_loss = train_fn(
+    train_loss, history = train_fn(
         model,
         trainloader,
         context.run_config["local-epochs"],
         lr,
         device,
+        valloader=valloader,
     )
     train_duration = time.time() - train_start_time
 
     logging.info(f"[CLIENT {pid}] Training complete. AvgTrainLoss={train_loss:.6f}, Duration={train_duration:.2f}s")
+    
+    # Save training history
+    _save_metrics_history(history, exp_dir, pid, current_round)
 
     arrays = ArrayRecord(model.state_dict())
     metrics = MetricRecord({
@@ -120,6 +130,21 @@ def evaluate(msg: Message, context: Context):
     # Save test predictions to CSV
     _save_predictions_to_csv(test_preds, test_trues, exp_dir, pid, current_round, "test", pred_len)
 
+    # Save scalar metrics
+    eval_metrics = {
+        "client_id": pid,
+        "round": current_round,
+        "val_loss": float(val_loss),
+        "val_mae": float(val_mae),
+        "val_rmse": float(val_rmse),
+        "val_duration": float(val_duration),
+        "test_loss": float(test_loss),
+        "test_mae": float(test_mae),
+        "test_rmse": float(test_rmse),
+        "test_duration": float(test_duration)
+    }
+    _save_eval_metrics(eval_metrics, exp_dir, pid)
+
     num_examples = len(valloader.dataset) + len(testloader.dataset)
     metrics = MetricRecord({
         "num-examples": num_examples,
@@ -181,3 +206,45 @@ def _save_predictions_to_csv(preds, trues, exp_dir, client_id, round_num, split_
     csv_path = os.path.join(predictions_dir, f"client{client_id}_round{round_num}_{split_name}.csv")
     df.to_csv(csv_path, index=False)
     logging.info(f"[CLIENT {client_id}] Saved {len(df)} {split_name} predictions to {csv_path}")
+
+
+def _save_metrics_history(history, exp_dir, client_id, round_num):
+    """
+    Save training history metrics to CSV.
+    """
+    if not history:
+        return
+
+    # Convert to DataFrame
+    df = pd.DataFrame(history)
+    df["client_id"] = client_id
+    df["round"] = round_num
+    
+    # Reorder
+    cols = ["client_id", "round"] + [c for c in df.columns if c not in ["client_id", "round"]]
+    df = df[cols]
+
+    metrics_dir = os.path.join(exp_dir, "metrics")
+    os.makedirs(metrics_dir, exist_ok=True)
+    csv_path = os.path.join(metrics_dir, f"client{client_id}_train_history.csv")
+    
+    # Append if exists, else write header
+    mode = 'a' if os.path.exists(csv_path) else 'w'
+    header = not os.path.exists(csv_path)
+    df.to_csv(csv_path, mode=mode, header=header, index=False)
+    logging.info(f"[CLIENT {client_id}] Saved training history to {csv_path}")
+
+
+def _save_eval_metrics(metrics_dict, exp_dir, client_id):
+    """
+    Save evaluation metrics to CSV.
+    """
+    df = pd.DataFrame([metrics_dict])
+    metrics_dir = os.path.join(exp_dir, "metrics")
+    os.makedirs(metrics_dir, exist_ok=True)
+    csv_path = os.path.join(metrics_dir, f"client{client_id}_eval_metrics.csv")
+    
+    mode = 'a' if os.path.exists(csv_path) else 'w'
+    header = not os.path.exists(csv_path)
+    df.to_csv(csv_path, mode=mode, header=header, index=False)
+    logging.info(f"[CLIENT {client_id}] Saved eval metrics to {csv_path}")
