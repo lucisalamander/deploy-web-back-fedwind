@@ -39,19 +39,19 @@ def get_default_configs(pred_len):
         pretrain=True,
         freeze=False,
         # data/patching
-        seq_len=256,
+        seq_len=336,
         pred_len=pred_len,
         patch_size=4,
         stride=1,
         d_model=768,  # Must match GPT-2's hidden_size for pretrained model (GPT-2 uses 768)
         hidden_size=16,  # Intermediate MLP hidden layer size
         kernel_size=3,
-        llm_layers=6,
+        llm_layers=4,
         lora_r=8,
         lora_alpha=16,
-        lora_dropout=0.5,
+        lora_dropout=0.15,
         lora_target_modules=["c_attn", "c_fc", "c_proj"],
-        dropout=0.5,  # Dropout rate for model regularization (applied in patch embedding, GPT output, pre-output layer)
+        dropout=0.15,  # Dropout rate for model regularization (applied in patch embedding, GPT output, pre-output layer)
     )
 
 
