@@ -57,6 +57,16 @@ LEARNING_RATE=0.0005
 BATCH_SIZE=32
 NUM_CLIENTS=5
 
+# Strategy and Optimization Parameters
+STRATEGY="fedavg"           # fedavg or fedprox
+PROXIMAL_MU=0.01            # FedProx proximal term coefficient (only used if STRATEGY=fedprox)
+WARMUP_ROUNDS=3             # Number of rounds for learning rate warmup
+WEIGHT_DECAY=0.01           # L2 regularization coefficient for AdamW optimizer
+
+# Early Stopping Parameters
+EARLY_STOPPING=true         # Enable/disable early stopping
+EARLY_STOP_PATIENCE=5       # Number of rounds without improvement before stopping
+
 # Model Architecture Parameters (requires code modification)
 SEQ_LEN=336
 PRED_LEN=120
@@ -329,6 +339,30 @@ parse_args() {
                 ;;
             --dropout)
                 DROPOUT="$2"
+                shift 2
+                ;;
+            --strategy)
+                STRATEGY="$2"
+                shift 2
+                ;;
+            --proximal-mu)
+                PROXIMAL_MU="$2"
+                shift 2
+                ;;
+            --warmup-rounds)
+                WARMUP_ROUNDS="$2"
+                shift 2
+                ;;
+            --weight-decay)
+                WEIGHT_DECAY="$2"
+                shift 2
+                ;;
+            --early-stopping)
+                EARLY_STOPPING="$2"
+                shift 2
+                ;;
+            --early-stop-patience)
+                EARLY_STOP_PATIENCE="$2"
                 shift 2
                 ;;
             *)
@@ -712,6 +746,16 @@ display_config() {
     echo -e "  ${CYAN}Batch Size:${NC}              $BATCH_SIZE"
     echo -e "  ${CYAN}Number of Clients:${NC}       $NUM_CLIENTS"
 
+    echo -e "\n${YELLOW}Strategy & Optimization Parameters:${NC}"
+    echo -e "  ${CYAN}Strategy:${NC}                $STRATEGY"
+    if [ "$STRATEGY" = "fedprox" ]; then
+        echo -e "  ${CYAN}Proximal Mu:${NC}             $PROXIMAL_MU"
+    fi
+    echo -e "  ${CYAN}Warmup Rounds:${NC}           $WARMUP_ROUNDS"
+    echo -e "  ${CYAN}Weight Decay:${NC}            $WEIGHT_DECAY"
+    echo -e "  ${CYAN}Early Stopping:${NC}          $EARLY_STOPPING"
+    echo -e "  ${CYAN}Early Stop Patience:${NC}    $EARLY_STOP_PATIENCE"
+
     echo -e "\n${YELLOW}Model Architecture Parameters:${NC}"
     echo -e "  ${CYAN}Sequence Length:${NC}         $SEQ_LEN"
     echo -e "  ${CYAN}Prediction Horizon:${NC}      $PRED_LEN"
@@ -755,7 +799,7 @@ run_flower() {
     print_info "Changed to directory: $FLOWER_APP_DIR"
 
     # Build Flower command
-    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE"
+    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE pred-len=$PRED_LEN strategy=$STRATEGY proximal-mu=$PROXIMAL_MU warmup-rounds=$WARMUP_ROUNDS weight-decay=$WEIGHT_DECAY early-stopping=$EARLY_STOPPING early-stop-patience=$EARLY_STOP_PATIENCE seq-len=$SEQ_LEN patch-size=$PATCH_SIZE stride=$STRIDE d-model=$D_MODEL hidden-size=$HIDDEN_SIZE kernel-size=$KERNEL_SIZE llm-layers=$LLM_LAYERS lora-r=$LORA_R lora-alpha=$LORA_ALPHA lora-dropout=$LORA_DROPOUT dropout=$DROPOUT"
 
     # Get the appropriate federation name based on client count
     FEDERATION_NAME=$(get_federation_name)
@@ -792,6 +836,14 @@ run_flower() {
         echo "  lr: $LEARNING_RATE"
         echo "  batch-size: $BATCH_SIZE"
         echo "  num-clients: $NUM_CLIENTS"
+        echo ""
+        echo "Strategy & Optimization Parameters:"
+        echo "  strategy: $STRATEGY"
+        echo "  proximal_mu: $PROXIMAL_MU"
+        echo "  warmup_rounds: $WARMUP_ROUNDS"
+        echo "  weight_decay: $WEIGHT_DECAY"
+        echo "  early_stopping: $EARLY_STOPPING"
+        echo "  early_stop_patience: $EARLY_STOP_PATIENCE"
         echo ""
         echo "Model Architecture Parameters:"
         echo "  seq_len: $SEQ_LEN"
@@ -934,8 +986,9 @@ main() {
         echo ""
     fi
 
-    # Update model configuration
-    update_model_config
+    # Update model configuration (DISABLED to allow parallel experiments)
+    # If you need to hardcode values in task.py, do it manually or via --setup
+    # update_model_config
 
     # Update number of clients
     # update_num_clients

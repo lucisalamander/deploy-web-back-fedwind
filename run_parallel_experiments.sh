@@ -244,6 +244,36 @@ generate_grid_experiments() {
     rm "$temp_file"
 }
 
+# Load grid search parameters from a bash-style config file
+load_grid_config() {
+    local config_file="$1"
+    print_info "Parsing grid configuration from: $config_file"
+
+    # Source the config file in a subshell to get only its variables
+    # then look for variables ending in _GRID
+    while IFS= read -r line; do
+        if [[ $line =~ ^([a-zA-Z0-9_]+)_GRID=\"(.*)\"$ ]]; then
+            local param_name="${BASH_REMATCH[1]}"
+            local param_values="${BASH_REMATCH[2]}"
+            
+            # Convert underscores to hyphens for flag mapping (e.g., pred_len -> pred-len)
+            local flag_name="${param_name//_/-}"
+            
+            if [ -n "$param_values" ]; then
+                GRID_PARAMS["$flag_name"]="$param_values"
+                print_info "  Found grid parameter: $flag_name = $param_values"
+            fi
+        fi
+    done < "$config_file"
+
+    # Also check if MAX_PARALLEL is defined in the config file
+    local config_max_parallel=$(grep "^MAX_PARALLEL=" "$config_file" | cut -d'=' -f2)
+    if [ -n "$config_max_parallel" ]; then
+        MAX_PARALLEL="$config_max_parallel"
+        print_info "  Set MAX_PARALLEL from config: $MAX_PARALLEL"
+    fi
+}
+
 # Run single experiment on specific GPU
 run_experiment() {
     local gpu_id=$1
@@ -307,8 +337,24 @@ main() {
             exit 1
         fi
 
-        print_info "Loading experiments from: $CONFIG_FILE"
-        mapfile -t experiments < <(grep -v '^#' "$CONFIG_FILE" | grep -v '^$')
+        # Check if this is a grid search config file (contains _GRID=)
+        if grep -q "_GRID=" "$CONFIG_FILE"; then
+            print_info "Detected grid search configuration format in: $CONFIG_FILE"
+            load_grid_config "$CONFIG_FILE"
+            
+            if [ ${#GRID_PARAMS[@]} -eq 0 ]; then
+                print_warning "No active grid parameters found in $CONFIG_FILE. Running single experiment."
+                experiments=("--config $CONFIG_FILE")
+            else
+                # Generate experiments and prepend --config argument
+                while IFS= read -r exp_args; do
+                    experiments+=("--config $CONFIG_FILE $exp_args")
+                done < <(generate_grid_experiments)
+            fi
+        else
+            print_info "Loading standard experiment list from: $CONFIG_FILE"
+            mapfile -t experiments < <(grep -v '^#' "$CONFIG_FILE" | grep -v '^$')
+        fi
     else
         print_error "Either --config or --grid-search must be specified"
         usage

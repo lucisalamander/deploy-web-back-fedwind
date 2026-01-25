@@ -31,8 +31,8 @@ clientapp = "my_flower_app.client_app:app"
 [tool.flwr.app.config]
 num-server-rounds = 3
 fraction-train = 0.5
-local-epochs = 1
-lr = 0.01
+local-epochs = 2
+lr = 0.001
 batch-size = 16
 
 

@@ -17,9 +17,22 @@ app = ClientApp()
 
 @app.train()
 def train(msg: Message, context: Context):
-    # Get pred_len from train config
-    pred_len = msg.content["config"].get("pred_len", 120)
-    configs = get_default_configs(pred_len=pred_len)
+    # Get model parameters from train config (passed from server)
+    conf = msg.content["config"]
+    configs = get_default_configs(
+        pred_len=conf.get("pred_len", 120),
+        seq_len=conf.get("seq_len", 336),
+        patch_size=conf.get("patch_size", 4),
+        stride=conf.get("stride", 1),
+        d_model=conf.get("d_model", 768),
+        hidden_size=conf.get("hidden_size", 16),
+        kernel_size=conf.get("kernel_size", 3),
+        llm_layers=conf.get("llm_layers", 4),
+        lora_r=conf.get("lora_r", 8),
+        lora_alpha=conf.get("lora_alpha", 16),
+        lora_dropout=conf.get("lora_dropout", 0.15),
+        dropout=conf.get("dropout", 0.15)
+    )
 
     model = Net(configs=configs)
     state = msg.content["arrays"].to_torch_state_dict()
@@ -44,11 +57,23 @@ def train(msg: Message, context: Context):
 
     logging.info(f"[CLIENT {pid}] Training on {len(trainloader.dataset)} samples, BatchSize={bs}")
 
-    # --- Learning Rate Decay ---
+    # --- Learning Rate Schedule: Warmup + Decay ---
     base_lr = msg.content["config"]["lr"]
-    current_round = context.run_config.get("server_round", 1)  # add from run_config
-    lr = base_lr * (0.9 ** (current_round - 1))  # decay 10% per round
-    logging.info(f"[CLIENT {pid}] Using decayed LR={lr:.6f} (round {current_round})")
+    current_round = context.run_config.get("server_round", 1)
+    warmup_rounds = context.run_config.get("warmup-rounds", 3)  # Default 3 rounds warmup
+
+    if current_round <= warmup_rounds:
+        # Linear warmup: gradually increase LR from 0 to base_lr
+        lr = base_lr * (current_round / warmup_rounds)
+        logging.info(f"[CLIENT {pid}] Warmup phase: LR={lr:.6f} (round {current_round}/{warmup_rounds})")
+    else:
+        # After warmup: apply exponential decay
+        decay_round = current_round - warmup_rounds
+        lr = base_lr * (0.9 ** decay_round)  # decay 10% per round after warmup
+        logging.info(f"[CLIENT {pid}] Decay phase: LR={lr:.6f} (round {current_round}, decay_round={decay_round})")
+
+    # Get weight decay parameter for regularization
+    weight_decay = context.run_config.get("weight-decay", 0.01)  # Default 0.01
 
     train_start_time = time.time()
     train_loss, history = train_fn(
@@ -58,6 +83,7 @@ def train(msg: Message, context: Context):
         lr,
         device,
         valloader=valloader,
+        weight_decay=weight_decay,
     )
     train_duration = time.time() - train_start_time
 
@@ -83,9 +109,22 @@ def evaluate(msg: Message, context: Context):
     This is called by the server to get federated evaluation metrics.
     Evaluates on both val (20%) and test (10%) splits.
     """
-    # Get pred_len from run_config (server passes it)
-    pred_len = context.run_config.get("pred-len", 120)
-    configs = get_default_configs(pred_len=pred_len)
+    # Get model parameters from run_config (for evaluation)
+    conf = context.run_config
+    configs = get_default_configs(
+        pred_len=conf.get("pred-len", 120),
+        seq_len=conf.get("seq-len", 336),
+        patch_size=conf.get("patch-size", 4),
+        stride=conf.get("stride", 1),
+        d_model=conf.get("d-model", 768),
+        hidden_size=conf.get("hidden-size", 16),
+        kernel_size=conf.get("kernel-size", 3),
+        llm_layers=conf.get("llm-layers", 4),
+        lora_r=conf.get("lora-r", 8),
+        lora_alpha=conf.get("lora-alpha", 16),
+        lora_dropout=conf.get("lora-dropout", 0.15),
+        dropout=conf.get("dropout", 0.15)
+    )
 
     model = Net(configs=configs)
     state = msg.content["arrays"].to_torch_state_dict()

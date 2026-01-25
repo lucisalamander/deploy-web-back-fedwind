@@ -34,6 +34,29 @@ class FedAvgWithMetrics(FedAvg):
         self.client_test_rmses = []
         self.client_test_durations = []
 
+
+class FedProxWithMetrics(FedAvg):
+    """Custom FedProx that tracks client training and evaluation metrics.
+
+    FedProx is similar to FedAvg but includes a proximal term on the client side.
+    This implementation provides the server-side strategy. For full FedProx functionality,
+    clients should add a proximal term (mu/2 * ||w - w_global||^2) to their local objective.
+    """
+
+    def __init__(self, *args, proximal_mu=0.01, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.proximal_mu = proximal_mu  # Proximal term coefficient
+        self.client_train_losses = []
+        self.client_train_durations = []
+        self.client_val_losses = []
+        self.client_val_maes = []
+        self.client_val_rmses = []
+        self.client_val_durations = []
+        self.client_test_losses = []
+        self.client_test_maes = []
+        self.client_test_rmses = []
+        self.client_test_durations = []
+
     def aggregate_fit(self, grid, config, messages):
         """Override to collect training metrics from clients."""
         self.client_train_losses = []
@@ -116,27 +139,73 @@ def main(grid: Grid, context: Context) -> None:
     bs:             int   = context.run_config.get("batch-size", 32)
     pred_len:       int   = context.run_config.get("pred-len", 120)  # Default to 120 if not specified
 
+    # Strategy selection: 'fedavg' or 'fedprox'
+    strategy_name:  str   = context.run_config.get("strategy", "fedavg").lower()
+    proximal_mu:    float = context.run_config.get("proximal-mu", 0.01)
+
+    # Early stopping parameters
+    early_stop_patience: int = context.run_config.get("early-stop-patience", 5)
+    early_stop_enabled: bool = context.run_config.get("early-stopping", True)
+
+    # Model architecture parameters
+    seq_len: int = context.run_config.get("seq-len", 336)
+    patch_size: int = context.run_config.get("patch-size", 4)
+    stride: int = context.run_config.get("stride", 1)
+    d_model: int = context.run_config.get("d-model", 768)
+    hidden_size: int = context.run_config.get("hidden-size", 16)
+    kernel_size: int = context.run_config.get("kernel-size", 3)
+    llm_layers: int = context.run_config.get("llm-layers", 4)
+    lora_r: int = context.run_config.get("lora-r", 8)
+    lora_alpha: int = context.run_config.get("lora-alpha", 16)
+    lora_dropout: float = context.run_config.get("lora-dropout", 0.15)
+    dropout: float = context.run_config.get("dropout", 0.15)
+
     # Get experiment directory from environment variable (set by run_flower_experiment.sh)
     import os
     exp_dir = os.environ.get("FLOWER_EXP_DIR", ".")
 
     logging.info("Loading project configuration...")
     logging.info(f"Config: rounds={total_rounds}  fraction-train={fraction_train}  lr={lr}  batch-size={bs}  pred-len={pred_len}")
+    logging.info(f"Strategy: {strategy_name}")
+    if strategy_name == "fedprox":
+        logging.info(f"FedProx proximal_mu: {proximal_mu}")
+    if early_stop_enabled:
+        logging.info(f"Early stopping enabled with patience: {early_stop_patience}")
     logging.info(f"Experiment directory: {exp_dir}")
 
-    # Initialize model with configurable pred_len
-    configs = get_default_configs(pred_len=pred_len)
+    # Initialize model with configurable parameters
+    configs = get_default_configs(
+        pred_len=pred_len,
+        seq_len=seq_len,
+        patch_size=patch_size,
+        stride=stride,
+        d_model=d_model,
+        hidden_size=hidden_size,
+        kernel_size=kernel_size,
+        llm_layers=llm_layers,
+        lora_r=lora_r,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
+        dropout=dropout
+    )
     global_model = Net(configs=configs)
     arrays = ArrayRecord(global_model.state_dict())
 
     logging.info("Server initialized - no server-side datasets. All training and testing happens on clients.")
 
-
-    strategy = FedAvgWithMetrics(fraction_train=fraction_train)
+    # Select strategy based on configuration
+    if strategy_name == "fedprox":
+        strategy = FedProxWithMetrics(fraction_train=fraction_train, proximal_mu=proximal_mu)
+    else:
+        strategy = FedAvgWithMetrics(fraction_train=fraction_train)
 
     best = {"round": 0, "loss": float("inf"), "arrays": None}
     logging.info("Starting federated training...")
     results = []
+
+    # Early stopping tracking
+    early_stop_counter = 0
+    best_val_loss = float("inf")
 
     training_start_time = time.time()
     for r in range(1, total_rounds + 1):
@@ -144,7 +213,22 @@ def main(grid: Grid, context: Context) -> None:
         result = strategy.start(
             grid=grid,
             initial_arrays=arrays,
-            train_config=ConfigRecord({"lr": lr, "pred_len": pred_len, "server_round": r}),
+            train_config=ConfigRecord({
+                "lr": lr, 
+                "pred_len": pred_len,
+                "seq_len": seq_len,
+                "patch_size": patch_size,
+                "stride": stride,
+                "d_model": d_model,
+                "hidden_size": hidden_size,
+                "kernel_size": kernel_size,
+                "llm_layers": llm_layers,
+                "lora_r": lora_r,
+                "lora_alpha": lora_alpha,
+                "lora_dropout": lora_dropout,
+                "dropout": dropout,
+                "server_round": r
+            }),
             num_rounds=1,
         )
 
@@ -288,6 +372,21 @@ def main(grid: Grid, context: Context) -> None:
             best["round"] = r
             best["arrays"] = copy.deepcopy(arrays)
             logging.info(f"[ROUND {r}] Best checkpoint updated (Val Loss={avg_val_loss:.6f})")
+
+        # Early stopping logic
+        if early_stop_enabled and avg_val_loss is not None:
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
+                early_stop_counter = 0
+                logging.info(f"[ROUND {r}] Validation loss improved to {avg_val_loss:.6f}. Resetting early stop counter.")
+            else:
+                early_stop_counter += 1
+                logging.info(f"[ROUND {r}] Validation loss did not improve. Early stop counter: {early_stop_counter}/{early_stop_patience}")
+
+                if early_stop_counter >= early_stop_patience:
+                    logging.info(f"[ROUND {r}] Early stopping triggered! No improvement for {early_stop_patience} rounds.")
+                    logging.info(f"[ROUND {r}] Best validation loss: {best_val_loss:.6f} at round {best['round']}")
+                    break
 
 
     total_training_time = time.time() - training_start_time

@@ -26,12 +26,26 @@ spec.loader.exec_module(GPT4TS)
 
 GPT4TS_Nonlinear = GPT4TS.GPT4TS_Nonlinear
 
-def get_default_configs(pred_len):
+def get_default_configs(
+    pred_len,
+    seq_len=336,
+    patch_size=4,
+    stride=1,
+    d_model=768,
+    hidden_size=16,
+    kernel_size=3,
+    llm_layers=4,
+    lora_r=8,
+    lora_alpha=16,
+    lora_dropout=0.15,
+    dropout=0.15
+):
     """
-    Get default model configurations.
+    Get model configurations.
 
     Args:
-        pred_len: Prediction length (forecast horizon). REQUIRED - must be specified. Common values: 96, 192, 336, 720
+        pred_len: Prediction length (forecast horizon). REQUIRED - must be specified.
+        ... other parameters are optional and have defaults matching the baseline.
     """
     return SimpleNamespace(
         # model behavior
@@ -39,19 +53,19 @@ def get_default_configs(pred_len):
         pretrain=True,
         freeze=False,
         # data/patching
-        seq_len=336,
+        seq_len=seq_len,
         pred_len=pred_len,
-        patch_size=4,
-        stride=1,
-        d_model=768,  # Must match GPT-2's hidden_size for pretrained model (GPT-2 uses 768)
-        hidden_size=16,  # Intermediate MLP hidden layer size
-        kernel_size=3,
-        llm_layers=4,
-        lora_r=8,
-        lora_alpha=16,
-        lora_dropout=0.15,
+        patch_size=patch_size,
+        stride=stride,
+        d_model=d_model,
+        hidden_size=hidden_size,
+        kernel_size=kernel_size,
+        llm_layers=llm_layers,
+        lora_r=lora_r,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
         lora_target_modules=["c_attn", "c_fc", "c_proj"],
-        dropout=0.15,  # Dropout rate for model regularization (applied in patch embedding, GPT output, pre-output layer)
+        dropout=dropout,
     )
 
 
@@ -86,18 +100,20 @@ class Net(nn.Module):
         return self.model(x, itr=0)
 
 
-def train(net, trainloader, epochs, lr, device, valloader=None):
+def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.01):
     """
     Train loop expects `net` to be an instance of Net (wrapper above).
     trainloader yields dicts {"x": [B, seq_len, 1], "y": [B, pred_len, 1]}
     Optionally evaluates on valloader after each epoch.
+    Args:
+        weight_decay: L2 regularization coefficient for AdamW optimizer (default: 0.01)
     Returns:
         avg_loss: average training loss over all epochs
         history: list of dictionaries containing per-epoch metrics
     """
     net.to(device)
     # net.train() removed here as it is called at start of each epoch loop
-    optimizer = torch.optim.AdamW(net.parameters(), lr=lr)
+    optimizer = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=weight_decay)
     criterion = nn.MSELoss()
     total_loss = 0.0
     count = 0
