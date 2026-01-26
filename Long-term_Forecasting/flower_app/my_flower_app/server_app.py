@@ -4,6 +4,7 @@ import copy
 import torch
 import pandas as pd
 import time
+import sys
 from datetime import datetime
 from flwr.app import ArrayRecord, ConfigRecord, Context, MetricRecord
 from flwr.serverapp import Grid, ServerApp
@@ -16,6 +17,27 @@ logging.basicConfig(level=logging.INFO, format= '%(asctime)s - %(levelname)s - %
 from my_flower_app.task import get_default_configs, Net
 
 app = ServerApp()
+
+
+def get_model_size_mb(arrays: ArrayRecord) -> float:
+    """
+    Calculate the size of model parameters in MB.
+
+    Args:
+        arrays: ArrayRecord containing model parameters
+
+    Returns:
+        Size in megabytes (MB)
+    """
+    state_dict = arrays.to_torch_state_dict()
+    total_bytes = 0
+    for param in state_dict.values():
+        # Get size in bytes: num_elements * bytes_per_element
+        total_bytes += param.numel() * param.element_size()
+
+    # Convert bytes to MB
+    size_mb = total_bytes / (1024 * 1024)
+    return size_mb
 
 
 class FedAvgWithMetrics(FedAvg):
@@ -197,6 +219,9 @@ def main(grid: Grid, context: Context) -> None:
     global_model = Net(configs=configs)
     arrays = ArrayRecord(global_model.state_dict())
 
+    # Calculate model payload size
+    model_size_mb = get_model_size_mb(arrays)
+    logging.info(f"Model payload size: {model_size_mb:.2f} MB ({model_size_mb * 1024:.2f} KB)")
     logging.info("Server initialized - no server-side datasets. All training and testing happens on clients.")
 
     # Select strategy based on configuration
@@ -245,12 +270,18 @@ def main(grid: Grid, context: Context) -> None:
         if hasattr(result, 'metrics_aggregated'):
             logging.info(f"[DEBUG Round {r}] result.metrics_aggregated: {result.metrics_aggregated}")
 
+        # Calculate payload sizes
+        payload_sent_mb = get_model_size_mb(arrays)  # Size sent to clients before training
+
         new_arrays = result.arrays
         if new_arrays is None or len(new_arrays.to_torch_state_dict()) == 0:
             logging.error("WARNING: Strategy returned EMPTY weights. Keeping previous weights!")
+            payload_received_mb = payload_sent_mb  # No update, same size
         else:
+            payload_received_mb = get_model_size_mb(new_arrays)  # Size received after aggregation
             arrays = new_arrays
 
+        logging.info(f"[Round {r}] Payload sent: {payload_sent_mb:.2f} MB, received: {payload_received_mb:.2f} MB")
         logging.info(f"[DEBUG Round {r}] strategy.client_train_losses = {strategy.client_train_losses}")
         logging.info(f"[DEBUG Round {r}] strategy.client_train_durations = {strategy.client_train_durations}")
 
@@ -364,6 +395,8 @@ def main(grid: Grid, context: Context) -> None:
             "test_rmse": float(avg_test_rmse) if avg_test_rmse is not None else None,
             "best_loss": float(best["loss"]),
             "round_duration_sec": float(round_duration),
+            "payload_sent_mb": float(payload_sent_mb),
+            "payload_received_mb": float(payload_received_mb),
             "avg_client_train_duration_sec": float(avg_client_train_duration) if avg_client_train_duration is not None else None,
             "max_client_train_duration_sec": float(max_client_train_duration) if max_client_train_duration is not None else None,
             "avg_client_val_duration_sec": float(avg_client_val_duration) if avg_client_val_duration is not None else None,
@@ -415,6 +448,7 @@ def main(grid: Grid, context: Context) -> None:
         "total_training_time_min": total_training_time / 60,
         "num_rounds": total_rounds,
         "avg_time_per_round_sec": total_training_time / total_rounds,
+        "model_size_mb": model_size_mb,
         "start_timestamp": datetime.fromtimestamp(training_start_time).strftime('%Y-%m-%d %H:%M:%S'),
         "end_timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     }
