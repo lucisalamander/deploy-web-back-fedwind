@@ -29,11 +29,40 @@ serverapp = "my_flower_app.server_app:app"
 clientapp = "my_flower_app.client_app:app"
 
 [tool.flwr.app.config]
+# Federated Learning Parameters
 num-server-rounds = 3
 fraction-train = 0.5
 local-epochs = 2
 lr = 0.001
 batch-size = 16
+
+# Strategy and Optimization Parameters
+strategy = "fedavg"
+proximal-mu = 0.01
+warmup-rounds = 3
+weight-decay = 0.01
+early-stopping = true
+early-stop-patience = 5
+
+# Time Series Forecasting Parameters
+seq-len = 336
+pred-len = 120
+
+# Model Architecture Parameters
+patch-size = 4
+stride = 1
+d-model = 768
+hidden-size = 16
+kernel-size = 3
+llm-layers = 4
+
+# LoRA Parameters
+lora-r = 8
+lora-alpha = 16
+lora-dropout = 0.0
+
+# Regularization Parameters
+dropout = 0.15
 
 
 ################################################################################

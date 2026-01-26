@@ -798,8 +798,8 @@ run_flower() {
     cd "$FLOWER_APP_DIR"
     print_info "Changed to directory: $FLOWER_APP_DIR"
 
-    # Build Flower command
-    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE pred-len=$PRED_LEN strategy=$STRATEGY proximal-mu=$PROXIMAL_MU warmup-rounds=$WARMUP_ROUNDS weight-decay=$WEIGHT_DECAY early-stopping=$EARLY_STOPPING early-stop-patience=$EARLY_STOP_PATIENCE seq-len=$SEQ_LEN patch-size=$PATCH_SIZE stride=$STRIDE d-model=$D_MODEL hidden-size=$HIDDEN_SIZE kernel-size=$KERNEL_SIZE llm-layers=$LLM_LAYERS lora-r=$LORA_R lora-alpha=$LORA_ALPHA lora-dropout=$LORA_DROPOUT dropout=$DROPOUT"
+    # Build Flower command (string values must be quoted for TOML format)
+    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE pred-len=$PRED_LEN strategy=\"$STRATEGY\" proximal-mu=$PROXIMAL_MU warmup-rounds=$WARMUP_ROUNDS weight-decay=$WEIGHT_DECAY early-stopping=$EARLY_STOPPING early-stop-patience=$EARLY_STOP_PATIENCE seq-len=$SEQ_LEN patch-size=$PATCH_SIZE stride=$STRIDE d-model=$D_MODEL hidden-size=$HIDDEN_SIZE kernel-size=$KERNEL_SIZE llm-layers=$LLM_LAYERS lora-r=$LORA_R lora-alpha=$LORA_ALPHA lora-dropout=$LORA_DROPOUT dropout=$DROPOUT"
 
     # Get the appropriate federation name based on client count
     FEDERATION_NAME=$(get_federation_name)
@@ -916,8 +916,14 @@ main() {
     # Parse arguments first (to get CONFIG_FILE if specified)
     parse_args "$@"
 
+    # Save command-line overrides before loading config
+    CMD_LINE_ARGS=("$@")
+
     # Load configuration file (if specified or default exists)
     load_config "$CONFIG_FILE"
+
+    # Re-parse command-line args to override config file values
+    parse_args "${CMD_LINE_ARGS[@]}"
 
     # Apply mode preset if specified (mode overrides config file)
     if [ -n "$MODE" ]; then
@@ -931,17 +937,6 @@ main() {
 
     # Display configuration
     display_config
-
-    # Confirm before proceeding (skip if auto-approved)
-    if [ "$DRY_RUN" = false ] && [ "$AUTO_APPROVE" = false ]; then
-        read -p "Proceed with this configuration? (y/n): " confirm
-        if [[ $confirm != "y" ]]; then
-            print_warning "Aborted by user"
-            exit 0
-        fi
-    elif [ "$AUTO_APPROVE" = true ]; then
-        print_info "Auto-approved (non-interactive mode)"
-    fi
 
     # Setup environment
     if [ "$SKIP_SETUP" = false ]; then

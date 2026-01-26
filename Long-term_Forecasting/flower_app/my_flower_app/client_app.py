@@ -154,7 +154,7 @@ def evaluate(msg: Message, context: Context):
     logging.info(f"[CLIENT {pid}] Validation complete. ValLoss={val_loss:.6f}, MAE={val_mae:.6f}, RMSE={val_rmse:.6f}, Duration={val_duration:.2f}s")
 
     # Save validation predictions to CSV
-    _save_predictions_to_csv(val_preds, val_trues, exp_dir, pid, current_round, "val", pred_len)
+    _save_predictions_to_csv(val_preds, val_trues, exp_dir, pid, current_round, "val", configs.pred_len)
 
     # Test evaluation (10% of data)
     testloader = load_client_test(pid, bs=bs, cfg=configs)
@@ -167,7 +167,7 @@ def evaluate(msg: Message, context: Context):
     logging.info(f"[CLIENT {pid}] Test complete. TestLoss={test_loss:.6f}, MAE={test_mae:.6f}, RMSE={test_rmse:.6f}, Duration={test_duration:.2f}s")
 
     # Save test predictions to CSV
-    _save_predictions_to_csv(test_preds, test_trues, exp_dir, pid, current_round, "test", pred_len)
+    _save_predictions_to_csv(test_preds, test_trues, exp_dir, pid, current_round, "test", configs.pred_len)
 
     # Save scalar metrics
     eval_metrics = {

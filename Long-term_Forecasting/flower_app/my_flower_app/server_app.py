@@ -65,6 +65,9 @@ class FedProxWithMetrics(FedAvg):
         logging.info(f"[DEBUG] aggregate_fit called with {len(messages)} messages")
 
         for msg in messages:
+            if not msg.has_content():
+                logging.warning("[DEBUG] Message has no content, skipping")
+                continue
             logging.info(f"[DEBUG] Message content keys: {msg.content.keys()}")
             if "metrics" in msg.content:
                 metrics = msg.content["metrics"]
@@ -99,6 +102,9 @@ class FedProxWithMetrics(FedAvg):
         logging.info(f"[DEBUG] aggregate_evaluate called with {len(messages)} messages")
 
         for msg in messages:
+            if not msg.has_content():
+                logging.warning("[DEBUG] Message has no content in aggregate_evaluate, skipping")
+                continue
             if "metrics" in msg.content:
                 metrics = msg.content["metrics"]
                 if hasattr(metrics, 'data'):

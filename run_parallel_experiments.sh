@@ -283,7 +283,12 @@ run_experiment() {
     print_info "[Experiment $exp_num] Starting on GPU $gpu_id with args: $exp_args"
 
     # Run experiment with GPU selection (--yes for non-interactive mode)
-    CUDA_VISIBLE_DEVICES=$gpu_id $RUNNER_SCRIPT --yes $exp_args 2>&1 | \
+    # Set both CUDA_VISIBLE_DEVICES and Ray-specific variables to force GPU isolation
+    # NOTE: Ray GPU isolation is challenging - experiments may still share GPUs
+    # For true isolation, run with MAX_PARALLEL=1 or accept shared GPU usage
+    CUDA_VISIBLE_DEVICES=$gpu_id \
+    RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1 \
+    $RUNNER_SCRIPT --yes $exp_args 2>&1 | \
         sed "s/^/[Exp$exp_num GPU$gpu_id] /"
 
     local exit_code=${PIPESTATUS[0]}
