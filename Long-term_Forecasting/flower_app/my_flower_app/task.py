@@ -38,20 +38,23 @@ def get_default_configs(
     lora_r=8,
     lora_alpha=16,
     lora_dropout=0.15,
-    dropout=0.15
+    dropout=0.15,
+    use_lora=True  # Enable LoRA by default for federated learning
 ):
     """
     Get model configurations.
 
     Args:
         pred_len: Prediction length (forecast horizon). REQUIRED - must be specified.
+        use_lora: Whether to enable LoRA fine-tuning (default: True)
         ... other parameters are optional and have defaults matching the baseline.
     """
     return SimpleNamespace(
         # model behavior
         is_gpt=True,
         pretrain=True,
-        freeze=False,
+        freeze=True,  # Freeze GPT2 base, only train LoRA adapters + LayerNorm
+        use_lora=use_lora,
         # data/patching
         seq_len=seq_len,
         pred_len=pred_len,
@@ -100,29 +103,54 @@ class Net(nn.Module):
         return self.model(x, itr=0)
 
 
-def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.01):
+def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.01, global_weights=None, proximal_mu=None):
     """
     Train loop expects `net` to be an instance of Net (wrapper above).
     trainloader yields dicts {"x": [B, seq_len, 1], "y": [B, pred_len, 1]}
     Optionally evaluates on valloader after each epoch.
+
     Args:
+        net: model to train
+        trainloader: training data loader
+        epochs: number of local training epochs
+        lr: learning rate
+        device: torch device
+        valloader: optional validation data loader
         weight_decay: L2 regularization coefficient for AdamW optimizer (default: 0.01)
+        global_weights: global model weights for FedProx proximal term (optional)
+        proximal_mu: FedProx proximal term coefficient (optional, e.g., 0.01)
+
     Returns:
         avg_loss: average training loss over all epochs
         history: list of dictionaries containing per-epoch metrics
     """
     net.to(device)
-    # net.train() removed here as it is called at start of each epoch loop
     optimizer = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=weight_decay)
     criterion = nn.MSELoss()
     total_loss = 0.0
     count = 0
     history = []
 
+    # Check if FedProx is enabled
+    use_fedprox = (proximal_mu is not None and global_weights is not None and proximal_mu > 0)
+    if use_fedprox:
+        logging.info(f"FedProx enabled: proximal_mu={proximal_mu}")
+        # CRITICAL FIX: Move global weights to device ONCE before training loop
+        # Only move trainable parameters to save memory
+        global_weights_device = {}
+        for name, param in net.named_parameters():
+            if param.requires_grad and name in global_weights:
+                global_weights_device[name] = global_weights[name].to(device)
+        logging.info(f"FedProx: Moved {len(global_weights_device)} global weight tensors to {device}")
+    else:
+        global_weights_device = None
+
     for epoch in range(epochs):
-        epoch_loss = 0.0
+        epoch_mse_loss = 0.0  # Track MSE separately
+        epoch_prox_loss = 0.0  # Track proximal term separately
+        epoch_total_loss = 0.0  # Track total loss (MSE + proximal)
         epoch_count = 0
-        
+
         # Training phase
         net.train()
         for batch in trainloader:
@@ -139,23 +167,50 @@ def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.0
 
             pred_len = net.configs.pred_len
             if y_true.size(1) > pred_len:
-                y_true = y_true[:, -pred_len:, :] 
-            loss = criterion(y_pred, y_true)
-            loss.backward()
+                y_true = y_true[:, -pred_len:, :]
+
+            # Base loss (MSE)
+            mse_loss = criterion(y_pred, y_true)
+            total_batch_loss = mse_loss
+
+            # CRITICAL: Add FedProx proximal term: (mu/2) * ||w - w_global||^2
+            # CRITICAL FIX: Use pre-moved global_weights_device (no .to() in loop)
+            if use_fedprox:
+                proximal_term = 0.0
+                for name, param in net.named_parameters():
+                    if name in global_weights_device:
+                        proximal_term += torch.sum((param - global_weights_device[name]) ** 2)
+                proximal_term = (proximal_mu / 2.0) * proximal_term
+                total_batch_loss = mse_loss + proximal_term
+                epoch_prox_loss += proximal_term.item()
+
+            total_batch_loss.backward()
             optimizer.step()
 
-            # Record batch loss
-            batch_loss = loss.item()
-            total_loss += batch_loss
-            epoch_loss += batch_loss
+            # CRITICAL FIX: Track MSE and total loss separately
+            epoch_mse_loss += mse_loss.item()
+            epoch_total_loss += total_batch_loss.item()
+            total_loss += total_batch_loss.item()  # For backward compat with return value
             count += 1
             epoch_count += 1
 
-        avg_epoch_train_loss = epoch_loss / max(1, epoch_count)
-        
+        # CRITICAL FIX: Separate MSE from total loss for fair comparison with val/test
+        avg_epoch_mse = epoch_mse_loss / max(1, epoch_count)
+        avg_epoch_total = epoch_total_loss / max(1, epoch_count)
+
         # Validation phase (if valloader provided)
-        metrics = {"epoch": epoch + 1, "train_loss": avg_epoch_train_loss}
-        
+        # IMPORTANT: Use MSE as primary "train_loss" for fair comparison with val/test
+        metrics = {
+            "epoch": epoch + 1,
+            "train_loss": avg_epoch_mse,  # MSE only (comparable to val/test)
+            "train_total_loss": avg_epoch_total  # MSE + proximal (actual optimized loss)
+        }
+
+        # Add proximal term info if FedProx is used
+        if use_fedprox:
+            avg_prox_loss = epoch_prox_loss / max(1, epoch_count)
+            metrics["proximal_loss"] = avg_prox_loss
+
         if valloader is not None:
             # Reusing the existing test function for validation
             # Note: test() sets net.eval(), so we ensure to set net.train() back at start of loop
@@ -163,10 +218,16 @@ def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.0
             metrics["val_loss"] = val_loss
             metrics["val_mae"] = val_mae
             metrics["val_rmse"] = val_rmse
-            logging.info(f"Epoch {epoch+1}/{epochs}: TrainLoss={avg_epoch_train_loss:.6f}, ValLoss={val_loss:.6f}")
+            if use_fedprox:
+                logging.info(f"Epoch {epoch+1}/{epochs}: TrainMSE={avg_epoch_mse:.6f}, TrainTotal={avg_epoch_total:.6f}, ProxLoss={avg_prox_loss:.6f}, ValLoss={val_loss:.6f}")
+            else:
+                logging.info(f"Epoch {epoch+1}/{epochs}: TrainMSE={avg_epoch_mse:.6f}, ValLoss={val_loss:.6f}")
         else:
-            logging.info(f"Epoch {epoch+1}/{epochs}: TrainLoss={avg_epoch_train_loss:.6f}")
-            
+            if use_fedprox:
+                logging.info(f"Epoch {epoch+1}/{epochs}: TrainMSE={avg_epoch_mse:.6f}, TrainTotal={avg_epoch_total:.6f}, ProxLoss={avg_prox_loss:.6f}")
+            else:
+                logging.info(f"Epoch {epoch+1}/{epochs}: TrainMSE={avg_epoch_mse:.6f}")
+
         history.append(metrics)
 
     avg_loss = total_loss / max(1, count)

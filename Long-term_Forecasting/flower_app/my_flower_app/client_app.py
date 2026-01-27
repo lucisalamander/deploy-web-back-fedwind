@@ -59,7 +59,8 @@ def train(msg: Message, context: Context):
 
     # --- Learning Rate Schedule: Warmup + Decay ---
     base_lr = msg.content["config"]["lr"]
-    current_round = context.run_config.get("server_round", 1)
+    # CRITICAL FIX: Read server_round from msg.content["config"] where server sends it
+    current_round = conf.get("server_round", 1)
     warmup_rounds = context.run_config.get("warmup-rounds", 3)  # Default 3 rounds warmup
 
     if current_round <= warmup_rounds:
@@ -75,6 +76,15 @@ def train(msg: Message, context: Context):
     # Get weight decay parameter for regularization
     weight_decay = context.run_config.get("weight-decay", 0.01)  # Default 0.01
 
+    # Get proximal_mu for FedProx (if provided)
+    proximal_mu = msg.content["config"].get("proximal_mu", None)
+
+    # Save global model weights for FedProx proximal term
+    global_weights = None
+    if proximal_mu is not None:
+        global_weights = {name: param.clone().detach() for name, param in model.named_parameters()}
+        logging.info(f"[CLIENT {pid}] FedProx enabled with proximal_mu={proximal_mu}")
+
     train_start_time = time.time()
     train_loss, history = train_fn(
         model,
@@ -84,6 +94,8 @@ def train(msg: Message, context: Context):
         device,
         valloader=valloader,
         weight_decay=weight_decay,
+        global_weights=global_weights,
+        proximal_mu=proximal_mu,
     )
     train_duration = time.time() - train_start_time
 

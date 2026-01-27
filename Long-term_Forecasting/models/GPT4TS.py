@@ -23,6 +23,14 @@ from einops import rearrange
 
 from transformers import AutoModel
 
+try:
+    from peft import LoraConfig, get_peft_model, TaskType
+except ImportError:
+    LoraConfig = None
+    get_peft_model = None
+    TaskType = None
+    print("Warning: peft library not found. LoRA functionality will be disabled.")
+
 
 class ConvMLPPatchEmbedding(nn.Module):
     """
@@ -182,6 +190,20 @@ class GPT4TS_Nonlinear(nn.Module):
                 self.gpt2 = GPT2Model(GPT2Config())
             self.gpt2.h = self.gpt2.h[:configs.llm_layers]
 
+            # Apply LoRA if enabled
+            if getattr(configs, 'use_lora', False):
+                self.gpt2 = self._apply_lora(
+                    self.gpt2,
+                    r=getattr(configs, "lora_r", 16),
+                    alpha=getattr(configs, "lora_alpha", 32),
+                    dropout=getattr(configs, "lora_dropout", 0.1),
+                    target_modules=getattr(
+                        configs,
+                        "lora_target_modules",
+                        ["c_attn", "c_fc", "c_proj"],  # GPT-2 attention and feedforward modules
+                    ),
+                )
+
         # Dropout for regularization
         dropout_rate = getattr(configs, 'dropout', 0.15)
 
@@ -201,7 +223,8 @@ class GPT4TS_Nonlinear(nn.Module):
 
         if configs.freeze and configs.pretrain:
             for name, param in self.gpt2.named_parameters():
-                if 'ln' in name or 'wpe' in name:
+                # Keep layer norm, positional embeddings, and LoRA parameters trainable
+                if 'lora_' in name or 'ln' in name or 'wpe' in name:
                     param.requires_grad = True
                 else:
                     param.requires_grad = False
@@ -241,3 +264,42 @@ class GPT4TS_Nonlinear(nn.Module):
         outputs = outputs * stdev
         outputs = outputs + means
         return outputs
+
+    def _apply_lora(self, model, r=16, alpha=32, dropout=0.1, target_modules=None):
+        """
+        Apply LoRA (Low-Rank Adaptation) to the model.
+
+        Args:
+            model: The model to apply LoRA to
+            r: LoRA rank (lower = fewer parameters)
+            alpha: LoRA scaling parameter
+            dropout: Dropout rate for LoRA layers
+            target_modules: List of module names to apply LoRA to
+
+        Returns:
+            Model wrapped with LoRA adapters
+        """
+        if LoraConfig is None or get_peft_model is None:
+            print("Warning: peft library not available. Skipping LoRA application.")
+            return model
+
+        if target_modules is None:
+            target_modules = ["c_attn", "c_fc", "c_proj"]
+
+        lora_cfg = LoraConfig(
+            r=r,
+            lora_alpha=alpha,
+            lora_dropout=dropout,
+            target_modules=target_modules,
+            bias="none",
+            task_type=TaskType.FEATURE_EXTRACTION if TaskType is not None else None,
+        )
+        model = get_peft_model(model, lora_cfg)
+
+        # Print trainable parameters info
+        try:
+            model.print_trainable_parameters()
+        except Exception as e:
+            print(f"Could not print trainable parameters: {e}")
+
+        return model
