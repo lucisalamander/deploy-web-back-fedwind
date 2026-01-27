@@ -4,7 +4,9 @@ import copy
 import torch
 import pandas as pd
 import time
+import sys
 from datetime import datetime
+from collections import defaultdict
 from flwr.app import ArrayRecord, ConfigRecord, Context, MetricRecord
 from flwr.serverapp import Grid, ServerApp
 from flwr.serverapp.strategy import FedAvg
@@ -16,6 +18,27 @@ logging.basicConfig(level=logging.INFO, format= '%(asctime)s - %(levelname)s - %
 from my_flower_app.task import get_default_configs, Net
 
 app = ServerApp()
+
+
+def get_model_size_mb(arrays: ArrayRecord) -> float:
+    """
+    Calculate the size of model parameters in MB.
+
+    Args:
+        arrays: ArrayRecord containing model parameters
+
+    Returns:
+        Size in megabytes (MB)
+    """
+    state_dict = arrays.to_torch_state_dict()
+    total_bytes = 0
+    for param in state_dict.values():
+        # Get size in bytes: num_elements * bytes_per_element
+        total_bytes += param.numel() * param.element_size()
+
+    # Convert bytes to MB
+    size_mb = total_bytes / (1024 * 1024)
+    return size_mb
 
 
 class FedAvgWithMetrics(FedAvg):
@@ -34,14 +57,58 @@ class FedAvgWithMetrics(FedAvg):
         self.client_test_rmses = []
         self.client_test_durations = []
 
+
+class FedProxWithMetrics(FedAvg):
+    """Custom FedProx that tracks client training and evaluation metrics.
+
+    FedProx adds a proximal term on the client side: loss + (mu/2) * ||w - w_global||^2
+    This keeps clients from drifting too far from the global model, improving stability
+    with heterogeneous (non-IID) data.
+
+    Server-side:
+    - Aggregation is same as FedAvg (weighted average)
+    - proximal_mu is passed to clients via train_config
+
+    Client-side:
+    - Clients receive proximal_mu and global weights
+    - Add proximal term to local objective during training
+    """
+
+    def __init__(self, *args, proximal_mu=0.01, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.proximal_mu = proximal_mu  # Proximal term coefficient
+
+        # Per-round metrics (flat lists - indexed by message order)
+        # Note: Flower 1.x+ Message API doesn't easily expose client IDs in aggregate methods
+        # For client-specific tracking, use the metrics CSV files saved by clients
+        self.client_train_losses = []
+        self.client_train_durations = []
+        self.client_val_losses = []
+        self.client_val_maes = []
+        self.client_val_rmses = []
+        self.client_val_durations = []
+        self.client_test_losses = []
+        self.client_test_maes = []
+        self.client_test_rmses = []
+        self.client_test_durations = []
+
+        # Optional: Per-client history (if we can extract client IDs)
+        self.train_history = defaultdict(list)
+        self.eval_history = defaultdict(list)
+
     def aggregate_fit(self, grid, config, messages):
         """Override to collect training metrics from clients."""
         self.client_train_losses = []
         self.client_train_durations = []
 
         logging.info(f"[DEBUG] aggregate_fit called with {len(messages)} messages")
+        server_round = config.get("server_round", -1)
 
-        for msg in messages:
+        for idx, msg in enumerate(messages):
+            if not msg.has_content():
+                logging.warning("[DEBUG] Message has no content, skipping")
+                continue
+
             logging.info(f"[DEBUG] Message content keys: {msg.content.keys()}")
             if "metrics" in msg.content:
                 metrics = msg.content["metrics"]
@@ -51,10 +118,25 @@ class FedAvgWithMetrics(FedAvg):
                     metrics_dict = metrics
 
                 logging.info(f"[DEBUG] Metrics dict: {metrics_dict}")
-                if "train_loss" in metrics_dict:
-                    self.client_train_losses.append(float(metrics_dict["train_loss"]))
-                if "train_duration_sec" in metrics_dict:
-                    self.client_train_durations.append(float(metrics_dict["train_duration_sec"]))
+
+                # Extract metrics
+                train_loss = metrics_dict.get("train_loss")
+                train_duration = metrics_dict.get("train_duration_sec")
+
+                if train_loss is not None:
+                    self.client_train_losses.append(float(train_loss))
+                if train_duration is not None:
+                    self.client_train_durations.append(float(train_duration))
+
+                # Try to get client_id (if available in metrics)
+                client_id = metrics_dict.get("client_id", f"client_{idx}")
+
+                # Store in per-client history
+                self.train_history[client_id].append({
+                    "round": server_round,
+                    "train_loss": float(train_loss) if train_loss is not None else None,
+                    "train_duration_sec": float(train_duration) if train_duration is not None else None,
+                })
             else:
                 logging.warning(f"[DEBUG] No 'metrics' key found in message content")
 
@@ -74,8 +156,13 @@ class FedAvgWithMetrics(FedAvg):
         self.client_test_durations = []
 
         logging.info(f"[DEBUG] aggregate_evaluate called with {len(messages)} messages")
+        # Try to get server round from grid context if available
+        server_round = getattr(grid, 'server_round', -1)
 
-        for msg in messages:
+        for idx, msg in enumerate(messages):
+            if not msg.has_content():
+                logging.warning("[DEBUG] Message has no content in aggregate_evaluate, skipping")
+                continue
             if "metrics" in msg.content:
                 metrics = msg.content["metrics"]
                 if hasattr(metrics, 'data'):
@@ -86,24 +173,50 @@ class FedAvgWithMetrics(FedAvg):
                 logging.info(f"[DEBUG] Eval Metrics dict: {metrics_dict}")
 
                 # Validation metrics
-                if "val_loss" in metrics_dict:
-                    self.client_val_losses.append(float(metrics_dict["val_loss"]))
-                if "val_mae" in metrics_dict:
-                    self.client_val_maes.append(float(metrics_dict["val_mae"]))
-                if "val_rmse" in metrics_dict:
-                    self.client_val_rmses.append(float(metrics_dict["val_rmse"]))
-                if "val_duration_sec" in metrics_dict:
-                    self.client_val_durations.append(float(metrics_dict["val_duration_sec"]))
+                val_loss = metrics_dict.get("val_loss")
+                val_mae = metrics_dict.get("val_mae")
+                val_rmse = metrics_dict.get("val_rmse")
+                val_duration = metrics_dict.get("val_duration_sec")
+
+                if val_loss is not None:
+                    self.client_val_losses.append(float(val_loss))
+                if val_mae is not None:
+                    self.client_val_maes.append(float(val_mae))
+                if val_rmse is not None:
+                    self.client_val_rmses.append(float(val_rmse))
+                if val_duration is not None:
+                    self.client_val_durations.append(float(val_duration))
 
                 # Test metrics
-                if "test_loss" in metrics_dict:
-                    self.client_test_losses.append(float(metrics_dict["test_loss"]))
-                if "test_mae" in metrics_dict:
-                    self.client_test_maes.append(float(metrics_dict["test_mae"]))
-                if "test_rmse" in metrics_dict:
-                    self.client_test_rmses.append(float(metrics_dict["test_rmse"]))
-                if "test_duration_sec" in metrics_dict:
-                    self.client_test_durations.append(float(metrics_dict["test_duration_sec"]))
+                test_loss = metrics_dict.get("test_loss")
+                test_mae = metrics_dict.get("test_mae")
+                test_rmse = metrics_dict.get("test_rmse")
+                test_duration = metrics_dict.get("test_duration_sec")
+
+                if test_loss is not None:
+                    self.client_test_losses.append(float(test_loss))
+                if test_mae is not None:
+                    self.client_test_maes.append(float(test_mae))
+                if test_rmse is not None:
+                    self.client_test_rmses.append(float(test_rmse))
+                if test_duration is not None:
+                    self.client_test_durations.append(float(test_duration))
+
+                # Try to get client_id (if available in metrics)
+                client_id = metrics_dict.get("client_id", f"client_{idx}")
+
+                # Store in per-client history
+                self.eval_history[client_id].append({
+                    "round": server_round,
+                    "val_loss": float(val_loss) if val_loss is not None else None,
+                    "val_mae": float(val_mae) if val_mae is not None else None,
+                    "val_rmse": float(val_rmse) if val_rmse is not None else None,
+                    "val_duration_sec": float(val_duration) if val_duration is not None else None,
+                    "test_loss": float(test_loss) if test_loss is not None else None,
+                    "test_mae": float(test_mae) if test_mae is not None else None,
+                    "test_rmse": float(test_rmse) if test_rmse is not None else None,
+                    "test_duration_sec": float(test_duration) if test_duration is not None else None,
+                })
 
         logging.info(f"[DEBUG] Collected {len(self.client_val_losses)} val losses, {len(self.client_test_losses)} test losses")
         return super().aggregate_evaluate(grid, messages)
@@ -116,35 +229,107 @@ def main(grid: Grid, context: Context) -> None:
     bs:             int   = context.run_config.get("batch-size", 32)
     pred_len:       int   = context.run_config.get("pred-len", 120)  # Default to 120 if not specified
 
+    # Strategy selection: 'fedavg' or 'fedprox'
+    strategy_name:  str   = context.run_config.get("strategy", "fedavg").lower()
+    proximal_mu:    float = context.run_config.get("proximal-mu", 0.01)
+
+    # Early stopping parameters
+    early_stop_patience: int = context.run_config.get("early-stop-patience", 5)
+    early_stop_enabled: bool = context.run_config.get("early-stopping", True)
+
+    # Model architecture parameters
+    seq_len: int = context.run_config.get("seq-len", 336)
+    patch_size: int = context.run_config.get("patch-size", 4)
+    stride: int = context.run_config.get("stride", 1)
+    d_model: int = context.run_config.get("d-model", 768)
+    hidden_size: int = context.run_config.get("hidden-size", 16)
+    kernel_size: int = context.run_config.get("kernel-size", 3)
+    llm_layers: int = context.run_config.get("llm-layers", 4)
+    lora_r: int = context.run_config.get("lora-r", 8)
+    lora_alpha: int = context.run_config.get("lora-alpha", 16)
+    lora_dropout: float = context.run_config.get("lora-dropout", 0.15)
+    dropout: float = context.run_config.get("dropout", 0.15)
+
     # Get experiment directory from environment variable (set by run_flower_experiment.sh)
     import os
     exp_dir = os.environ.get("FLOWER_EXP_DIR", ".")
 
     logging.info("Loading project configuration...")
     logging.info(f"Config: rounds={total_rounds}  fraction-train={fraction_train}  lr={lr}  batch-size={bs}  pred-len={pred_len}")
+    logging.info(f"Strategy: {strategy_name}")
+    if strategy_name == "fedprox":
+        logging.info(f"FedProx proximal_mu: {proximal_mu}")
+    if early_stop_enabled:
+        logging.info(f"Early stopping enabled with patience: {early_stop_patience}")
     logging.info(f"Experiment directory: {exp_dir}")
 
-    # Initialize model with configurable pred_len
-    configs = get_default_configs(pred_len=pred_len)
+    # Initialize model with configurable parameters
+    configs = get_default_configs(
+        pred_len=pred_len,
+        seq_len=seq_len,
+        patch_size=patch_size,
+        stride=stride,
+        d_model=d_model,
+        hidden_size=hidden_size,
+        kernel_size=kernel_size,
+        llm_layers=llm_layers,
+        lora_r=lora_r,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
+        dropout=dropout
+    )
     global_model = Net(configs=configs)
     arrays = ArrayRecord(global_model.state_dict())
 
+    # Calculate model payload size
+    model_size_mb = get_model_size_mb(arrays)
+    logging.info(f"Model payload size: {model_size_mb:.2f} MB ({model_size_mb * 1024:.2f} KB)")
     logging.info("Server initialized - no server-side datasets. All training and testing happens on clients.")
 
-
-    strategy = FedAvgWithMetrics(fraction_train=fraction_train)
+    # Select strategy based on configuration
+    if strategy_name == "fedprox":
+        strategy = FedProxWithMetrics(fraction_train=fraction_train, proximal_mu=proximal_mu)
+    else:
+        strategy = FedAvgWithMetrics(fraction_train=fraction_train)
 
     best = {"round": 0, "loss": float("inf"), "arrays": None}
     logging.info("Starting federated training...")
     results = []
 
+    # Early stopping tracking
+    early_stop_counter = 0
+    best_val_loss = float("inf")
+
     training_start_time = time.time()
     for r in range(1, total_rounds + 1):
         round_start_time = time.time()
+        # CRITICAL FIX: Pass proximal_mu to clients for FedProx
+        train_cfg = {
+            "lr": lr,
+            "pred_len": pred_len,
+            "seq_len": seq_len,
+            "patch_size": patch_size,
+            "stride": stride,
+            "d_model": d_model,
+            "hidden_size": hidden_size,
+            "kernel_size": kernel_size,
+            "llm_layers": llm_layers,
+            "lora_r": lora_r,
+            "lora_alpha": lora_alpha,
+            "lora_dropout": lora_dropout,
+            "dropout": dropout,
+            "server_round": r
+        }
+
+        # Add proximal_mu if using FedProx strategy
+        if strategy_name == "fedprox":
+            train_cfg["proximal_mu"] = proximal_mu
+            logging.info(f"[ROUND {r}] Sending proximal_mu={proximal_mu} to clients for FedProx")
+
         result = strategy.start(
             grid=grid,
             initial_arrays=arrays,
-            train_config=ConfigRecord({"lr": lr, "pred_len": pred_len, "server_round": r}),
+            train_config=ConfigRecord(train_cfg),
             num_rounds=1,
         )
 
@@ -155,12 +340,18 @@ def main(grid: Grid, context: Context) -> None:
         if hasattr(result, 'metrics_aggregated'):
             logging.info(f"[DEBUG Round {r}] result.metrics_aggregated: {result.metrics_aggregated}")
 
+        # Calculate payload sizes
+        payload_sent_mb = get_model_size_mb(arrays)  # Size sent to clients before training
+
         new_arrays = result.arrays
         if new_arrays is None or len(new_arrays.to_torch_state_dict()) == 0:
             logging.error("WARNING: Strategy returned EMPTY weights. Keeping previous weights!")
+            payload_received_mb = payload_sent_mb  # No update, same size
         else:
+            payload_received_mb = get_model_size_mb(new_arrays)  # Size received after aggregation
             arrays = new_arrays
 
+        logging.info(f"[Round {r}] Payload sent: {payload_sent_mb:.2f} MB, received: {payload_received_mb:.2f} MB")
         logging.info(f"[DEBUG Round {r}] strategy.client_train_losses = {strategy.client_train_losses}")
         logging.info(f"[DEBUG Round {r}] strategy.client_train_durations = {strategy.client_train_durations}")
 
@@ -274,6 +465,8 @@ def main(grid: Grid, context: Context) -> None:
             "test_rmse": float(avg_test_rmse) if avg_test_rmse is not None else None,
             "best_loss": float(best["loss"]),
             "round_duration_sec": float(round_duration),
+            "payload_sent_mb": float(payload_sent_mb),
+            "payload_received_mb": float(payload_received_mb),
             "avg_client_train_duration_sec": float(avg_client_train_duration) if avg_client_train_duration is not None else None,
             "max_client_train_duration_sec": float(max_client_train_duration) if max_client_train_duration is not None else None,
             "avg_client_val_duration_sec": float(avg_client_val_duration) if avg_client_val_duration is not None else None,
@@ -289,16 +482,38 @@ def main(grid: Grid, context: Context) -> None:
             best["arrays"] = copy.deepcopy(arrays)
             logging.info(f"[ROUND {r}] Best checkpoint updated (Val Loss={avg_val_loss:.6f})")
 
+        # Early stopping logic
+        if early_stop_enabled and avg_val_loss is not None:
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
+                early_stop_counter = 0
+                logging.info(f"[ROUND {r}] Validation loss improved to {avg_val_loss:.6f}. Resetting early stop counter.")
+            else:
+                early_stop_counter += 1
+                logging.info(f"[ROUND {r}] Validation loss did not improve. Early stop counter: {early_stop_counter}/{early_stop_patience}")
+
+                if early_stop_counter >= early_stop_patience:
+                    logging.info(f"[ROUND {r}] Early stopping triggered! No improvement for {early_stop_patience} rounds.")
+                    logging.info(f"[ROUND {r}] Best validation loss: {best_val_loss:.6f} at round {best['round']}")
+                    break
+
 
     total_training_time = time.time() - training_start_time
 
     logging.info(f"Total training time: {total_training_time:.2f}s ({total_training_time/60:.2f} minutes)")
     logging.info(f"Average time per round: {total_training_time/total_rounds:.2f}s")
 
-    logging.info("Saving final model to disk...")
+    # CRITICAL FIX: Restore best model weights instead of using final round weights
+    if best["arrays"] is not None:
+        logging.info(f"Restoring best model from round {best['round']} (Val Loss={best['loss']:.6f})")
+        arrays = best["arrays"]
+    else:
+        logging.warning("No best checkpoint found, using final round weights")
+
+    logging.info("Saving best model to disk...")
     final_model_path = os.path.join(exp_dir, "final_model.pt")
     torch.save(arrays.to_torch_state_dict(), final_model_path)
-    logging.info(f"Saved final model to: {final_model_path}")
+    logging.info(f"Saved best model (from round {best['round']}) to: {final_model_path}")
 
     df = pd.DataFrame(results)
     training_summary_path = os.path.join(exp_dir, "training_summary.csv")
@@ -310,6 +525,7 @@ def main(grid: Grid, context: Context) -> None:
         "total_training_time_min": total_training_time / 60,
         "num_rounds": total_rounds,
         "avg_time_per_round_sec": total_training_time / total_rounds,
+        "model_size_mb": model_size_mb,
         "start_timestamp": datetime.fromtimestamp(training_start_time).strftime('%Y-%m-%d %H:%M:%S'),
         "end_timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     }

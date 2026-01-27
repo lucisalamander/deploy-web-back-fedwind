@@ -17,9 +17,22 @@ app = ClientApp()
 
 @app.train()
 def train(msg: Message, context: Context):
-    # Get pred_len from train config
-    pred_len = msg.content["config"].get("pred_len", 120)
-    configs = get_default_configs(pred_len=pred_len)
+    # Get model parameters from train config (passed from server)
+    conf = msg.content["config"]
+    configs = get_default_configs(
+        pred_len=conf.get("pred_len", 120),
+        seq_len=conf.get("seq_len", 336),
+        patch_size=conf.get("patch_size", 4),
+        stride=conf.get("stride", 1),
+        d_model=conf.get("d_model", 768),
+        hidden_size=conf.get("hidden_size", 16),
+        kernel_size=conf.get("kernel_size", 3),
+        llm_layers=conf.get("llm_layers", 4),
+        lora_r=conf.get("lora_r", 8),
+        lora_alpha=conf.get("lora_alpha", 16),
+        lora_dropout=conf.get("lora_dropout", 0.15),
+        dropout=conf.get("dropout", 0.15)
+    )
 
     model = Net(configs=configs)
     state = msg.content["arrays"].to_torch_state_dict()
@@ -35,26 +48,61 @@ def train(msg: Message, context: Context):
     npt = context.node_config["num-partitions"]
     bs  = context.run_config.get("batch-size", 32)
     trainloader = load_client_train(pid, npt, bs=bs, cfg=configs)
+    
+    # Get experiment directory from environment variable
+    exp_dir = os.environ.get("FLOWER_EXP_DIR", ".")
+    
+    # Load validation set for tracking local overfitting
+    valloader = load_client_val(pid, bs=bs, cfg=configs)
 
     logging.info(f"[CLIENT {pid}] Training on {len(trainloader.dataset)} samples, BatchSize={bs}")
 
-    # --- Learning Rate Decay ---
+    # --- Learning Rate Schedule: Warmup + Decay ---
     base_lr = msg.content["config"]["lr"]
-    current_round = context.run_config.get("server_round", 1)  # add from run_config
-    lr = base_lr * (0.9 ** (current_round - 1))  # decay 10% per round
-    logging.info(f"[CLIENT {pid}] Using decayed LR={lr:.6f} (round {current_round})")
+    # CRITICAL FIX: Read server_round from msg.content["config"] where server sends it
+    current_round = conf.get("server_round", 1)
+    warmup_rounds = context.run_config.get("warmup-rounds", 3)  # Default 3 rounds warmup
+
+    if current_round <= warmup_rounds:
+        # Linear warmup: gradually increase LR from 0 to base_lr
+        lr = base_lr * (current_round / warmup_rounds)
+        logging.info(f"[CLIENT {pid}] Warmup phase: LR={lr:.6f} (round {current_round}/{warmup_rounds})")
+    else:
+        # After warmup: apply exponential decay
+        decay_round = current_round - warmup_rounds
+        lr = base_lr * (0.9 ** decay_round)  # decay 10% per round after warmup
+        logging.info(f"[CLIENT {pid}] Decay phase: LR={lr:.6f} (round {current_round}, decay_round={decay_round})")
+
+    # Get weight decay parameter for regularization
+    weight_decay = context.run_config.get("weight-decay", 0.01)  # Default 0.01
+
+    # Get proximal_mu for FedProx (if provided)
+    proximal_mu = msg.content["config"].get("proximal_mu", None)
+
+    # Save global model weights for FedProx proximal term
+    global_weights = None
+    if proximal_mu is not None:
+        global_weights = {name: param.clone().detach() for name, param in model.named_parameters()}
+        logging.info(f"[CLIENT {pid}] FedProx enabled with proximal_mu={proximal_mu}")
 
     train_start_time = time.time()
-    train_loss = train_fn(
+    train_loss, history = train_fn(
         model,
         trainloader,
         context.run_config["local-epochs"],
         lr,
         device,
+        valloader=valloader,
+        weight_decay=weight_decay,
+        global_weights=global_weights,
+        proximal_mu=proximal_mu,
     )
     train_duration = time.time() - train_start_time
 
     logging.info(f"[CLIENT {pid}] Training complete. AvgTrainLoss={train_loss:.6f}, Duration={train_duration:.2f}s")
+    
+    # Save training history
+    _save_metrics_history(history, exp_dir, pid, current_round)
 
     arrays = ArrayRecord(model.state_dict())
     metrics = MetricRecord({
@@ -73,9 +121,22 @@ def evaluate(msg: Message, context: Context):
     This is called by the server to get federated evaluation metrics.
     Evaluates on both val (20%) and test (10%) splits.
     """
-    # Get pred_len from run_config (server passes it)
-    pred_len = context.run_config.get("pred-len", 120)
-    configs = get_default_configs(pred_len=pred_len)
+    # Get model parameters from run_config (for evaluation)
+    conf = context.run_config
+    configs = get_default_configs(
+        pred_len=conf.get("pred-len", 120),
+        seq_len=conf.get("seq-len", 336),
+        patch_size=conf.get("patch-size", 4),
+        stride=conf.get("stride", 1),
+        d_model=conf.get("d-model", 768),
+        hidden_size=conf.get("hidden-size", 16),
+        kernel_size=conf.get("kernel-size", 3),
+        llm_layers=conf.get("llm-layers", 4),
+        lora_r=conf.get("lora-r", 8),
+        lora_alpha=conf.get("lora-alpha", 16),
+        lora_dropout=conf.get("lora-dropout", 0.15),
+        dropout=conf.get("dropout", 0.15)
+    )
 
     model = Net(configs=configs)
     state = msg.content["arrays"].to_torch_state_dict()
@@ -105,7 +166,7 @@ def evaluate(msg: Message, context: Context):
     logging.info(f"[CLIENT {pid}] Validation complete. ValLoss={val_loss:.6f}, MAE={val_mae:.6f}, RMSE={val_rmse:.6f}, Duration={val_duration:.2f}s")
 
     # Save validation predictions to CSV
-    _save_predictions_to_csv(val_preds, val_trues, exp_dir, pid, current_round, "val", pred_len)
+    _save_predictions_to_csv(val_preds, val_trues, exp_dir, pid, current_round, "val", configs.pred_len)
 
     # Test evaluation (10% of data)
     testloader = load_client_test(pid, bs=bs, cfg=configs)
@@ -118,7 +179,22 @@ def evaluate(msg: Message, context: Context):
     logging.info(f"[CLIENT {pid}] Test complete. TestLoss={test_loss:.6f}, MAE={test_mae:.6f}, RMSE={test_rmse:.6f}, Duration={test_duration:.2f}s")
 
     # Save test predictions to CSV
-    _save_predictions_to_csv(test_preds, test_trues, exp_dir, pid, current_round, "test", pred_len)
+    _save_predictions_to_csv(test_preds, test_trues, exp_dir, pid, current_round, "test", configs.pred_len)
+
+    # Save scalar metrics
+    eval_metrics = {
+        "client_id": pid,
+        "round": current_round,
+        "val_loss": float(val_loss),
+        "val_mae": float(val_mae),
+        "val_rmse": float(val_rmse),
+        "val_duration": float(val_duration),
+        "test_loss": float(test_loss),
+        "test_mae": float(test_mae),
+        "test_rmse": float(test_rmse),
+        "test_duration": float(test_duration)
+    }
+    _save_eval_metrics(eval_metrics, exp_dir, pid)
 
     num_examples = len(valloader.dataset) + len(testloader.dataset)
     metrics = MetricRecord({
@@ -181,3 +257,45 @@ def _save_predictions_to_csv(preds, trues, exp_dir, client_id, round_num, split_
     csv_path = os.path.join(predictions_dir, f"client{client_id}_round{round_num}_{split_name}.csv")
     df.to_csv(csv_path, index=False)
     logging.info(f"[CLIENT {client_id}] Saved {len(df)} {split_name} predictions to {csv_path}")
+
+
+def _save_metrics_history(history, exp_dir, client_id, round_num):
+    """
+    Save training history metrics to CSV.
+    """
+    if not history:
+        return
+
+    # Convert to DataFrame
+    df = pd.DataFrame(history)
+    df["client_id"] = client_id
+    df["round"] = round_num
+    
+    # Reorder
+    cols = ["client_id", "round"] + [c for c in df.columns if c not in ["client_id", "round"]]
+    df = df[cols]
+
+    metrics_dir = os.path.join(exp_dir, "metrics")
+    os.makedirs(metrics_dir, exist_ok=True)
+    csv_path = os.path.join(metrics_dir, f"client{client_id}_train_history.csv")
+    
+    # Append if exists, else write header
+    mode = 'a' if os.path.exists(csv_path) else 'w'
+    header = not os.path.exists(csv_path)
+    df.to_csv(csv_path, mode=mode, header=header, index=False)
+    logging.info(f"[CLIENT {client_id}] Saved training history to {csv_path}")
+
+
+def _save_eval_metrics(metrics_dict, exp_dir, client_id):
+    """
+    Save evaluation metrics to CSV.
+    """
+    df = pd.DataFrame([metrics_dict])
+    metrics_dir = os.path.join(exp_dir, "metrics")
+    os.makedirs(metrics_dir, exist_ok=True)
+    csv_path = os.path.join(metrics_dir, f"client{client_id}_eval_metrics.csv")
+    
+    mode = 'a' if os.path.exists(csv_path) else 'w'
+    header = not os.path.exists(csv_path)
+    df.to_csv(csv_path, mode=mode, header=header, index=False)
+    logging.info(f"[CLIENT {client_id}] Saved eval metrics to {csv_path}")

@@ -210,6 +210,12 @@ parser.add_argument('--hid_dim', type=int, default=16)
 
 parser.add_argument('--experiment_type', type=str, default='experiment_results')
 
+# LoRA Configuration
+parser.add_argument('--use_lora', type=int, default=0, help='Enable LoRA (1) or disable (0)')
+parser.add_argument('--lora_r', type=int, default=16, help='LoRA rank (lower = fewer parameters)')
+parser.add_argument('--lora_alpha', type=int, default=32, help='LoRA scaling parameter')
+parser.add_argument('--lora_dropout', type=float, default=0.1, help='LoRA dropout rate')
+
 args = parser.parse_args()
 args.checkpoints = os.path.join(args.checkpoints, args.experiment_type)
 

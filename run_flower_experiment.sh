@@ -43,8 +43,11 @@ PROJECT_ROOT="$SCRIPT_DIR"
 FLOWER_APP_DIR="$PROJECT_ROOT/Long-term_Forecasting/flower_app"
 
 ################################################################################
-# Default Parameters
+# Default Parameters (can be overridden by config file or command-line args)
 ################################################################################
+
+# Path to config file (can be set via --config argument)
+CONFIG_FILE=""
 
 # Federated Learning Parameters (--run-config)
 NUM_ROUNDS=10
@@ -53,6 +56,16 @@ LOCAL_EPOCHS=2
 LEARNING_RATE=0.0005
 BATCH_SIZE=32
 NUM_CLIENTS=5
+
+# Strategy and Optimization Parameters
+STRATEGY="fedavg"           # fedavg or fedprox
+PROXIMAL_MU=0.01            # FedProx proximal term coefficient (only used if STRATEGY=fedprox)
+WARMUP_ROUNDS=3             # Number of rounds for learning rate warmup
+WEIGHT_DECAY=0.01           # L2 regularization coefficient for AdamW optimizer
+
+# Early Stopping Parameters
+EARLY_STOPPING=true         # Enable/disable early stopping
+EARLY_STOP_PATIENCE=5       # Number of rounds without improvement before stopping
 
 # Model Architecture Parameters (requires code modification)
 SEQ_LEN=336
@@ -67,6 +80,9 @@ LORA_R=8
 LORA_ALPHA=16
 LORA_DROPOUT=0.0  # No dropout for LoRA
 DROPOUT=0.15  # Model dropout for regularization (default: 0.15)
+
+# Conda environment
+CONDA_ENV=flwr39
 
 # Setup Options
 SKIP_SETUP=true  # Default: skip setup (faster)
@@ -106,6 +122,11 @@ print_error() {
 usage() {
     cat << EOF
 Usage: $0 [OPTIONS]
+
+Configuration:
+    --config FILE             Load parameters from config file (default: experiment_config.conf)
+                             Config file values override script defaults.
+                             Command-line arguments override config file.
 
 Setup Options:
     --setup                   Run full environment setup (Python, CUDA, venv checks)
@@ -150,26 +171,59 @@ Other Options:
     -h, --help                Show this help message
 
 Examples:
-    # Quick test run (default: skip setup)
+    # Use default config file (experiment_config.conf)
+    $0
+
+    # Use custom config file
+    $0 --config my_experiment.conf
+
+    # Config file + override specific parameters
+    $0 --config experiment_config.conf --rounds 20 --pred-len 96
+
+    # Quick test (preset mode)
     $0 --mode quick
 
-    # With full environment setup
-    $0 --mode quick --setup
+    # Full training with custom parameters
+    $0 --rounds 15 --lr 0.0005 --pred-len 120 --llm-layers 6
 
-    # Custom FL parameters
-    $0 --rounds 20 --lr 0.001 --local-epochs 3
-
-    # Custom model architecture
-    $0 --seq-len 512 --pred-len 96 --d-model 256 --llm-layers 6
-
-    # Full custom configuration
-    $0 --rounds 15 --lr 0.0005 --seq-len 336 --pred-len 120 \\
-        --llm-layers 6 --lora-r 16 --batch-size 32
-
-    # Interactive mode
+    # Interactive configuration
     $0 --interactive
 
+    # With full environment setup
+    $0 --config experiment_config.conf --setup
+
 EOF
+}
+
+################################################################################
+# Load Configuration File
+################################################################################
+
+load_config() {
+    local config_file="$1"
+
+    if [ -z "$config_file" ]; then
+        # Try default config file if it exists
+        if [ -f "$SCRIPT_DIR/experiment_config.conf" ]; then
+            config_file="$SCRIPT_DIR/experiment_config.conf"
+            print_info "Loading default config: $config_file"
+        else
+            return 0  # No config file specified and no default found
+        fi
+    fi
+
+    if [ ! -f "$config_file" ]; then
+        print_error "Config file not found: $config_file"
+        exit 1
+    fi
+
+    print_info "Loading configuration from: $config_file"
+
+    # Source the config file (it's a bash script with KEY=VALUE pairs)
+    # shellcheck disable=SC1090
+    source "$config_file"
+
+    print_success "Configuration loaded successfully"
 }
 
 ################################################################################
@@ -182,6 +236,10 @@ parse_args() {
             -h|--help)
                 usage
                 exit 0
+                ;;
+            --config)
+                CONFIG_FILE="$2"
+                shift 2
                 ;;
             --setup)
                 SKIP_SETUP=false  # Explicitly enable setup
@@ -281,6 +339,30 @@ parse_args() {
                 ;;
             --dropout)
                 DROPOUT="$2"
+                shift 2
+                ;;
+            --strategy)
+                STRATEGY="$2"
+                shift 2
+                ;;
+            --proximal-mu)
+                PROXIMAL_MU="$2"
+                shift 2
+                ;;
+            --warmup-rounds)
+                WARMUP_ROUNDS="$2"
+                shift 2
+                ;;
+            --weight-decay)
+                WEIGHT_DECAY="$2"
+                shift 2
+                ;;
+            --early-stopping)
+                EARLY_STOPPING="$2"
+                shift 2
+                ;;
+            --early-stop-patience)
+                EARLY_STOP_PATIENCE="$2"
                 shift 2
                 ;;
             *)
@@ -473,20 +555,20 @@ select_gpu() {
 }
 
 setup_venv() {
-    print_info "Checking conda environment 'flwr39'..."
+    print_info "Checking conda environment '$CONDA_ENV'..."
 
     # Check if conda is available
     if command -v conda &> /dev/null; then
         # Initialize conda for bash
         eval "$(conda shell.bash hook)"
 
-        # Try to activate flwr39
-        if conda activate flwr39 2>/dev/null; then
-            print_success "Conda environment 'flwr39' activated"
+        # Try to activate conda environment
+        if conda activate "$CONDA_ENV" 2>/dev/null; then
+            print_success "Conda environment '$CONDA_ENV' activated"
         else
-            print_error "Conda environment 'flwr39' not found"
-            print_info "Please create it with: conda create -n flwr39 python=3.9 -y"
-            print_info "Then install flower: conda activate flwr39 && pip install flwr[simulation]"
+            print_error "Conda environment '$CONDA_ENV' not found"
+            print_info "Please create it with: conda create -n $CONDA_ENV python=3.9 -y"
+            print_info "Then install flower: conda activate $CONDA_ENV && pip install flwr[simulation]"
             exit 1
         fi
     else
@@ -501,7 +583,7 @@ setup_venv() {
         PYTHON_PATH=$(which python3)
         print_info "Using Python from: $PYTHON_PATH"
     else
-        print_error "flwr command not found in conda environment"
+        print_error "flwr command not found in conda environment '$CONDA_ENV'"
         print_info "Please install flower: pip install flwr[simulation]"
         exit 1
     fi
@@ -664,6 +746,16 @@ display_config() {
     echo -e "  ${CYAN}Batch Size:${NC}              $BATCH_SIZE"
     echo -e "  ${CYAN}Number of Clients:${NC}       $NUM_CLIENTS"
 
+    echo -e "\n${YELLOW}Strategy & Optimization Parameters:${NC}"
+    echo -e "  ${CYAN}Strategy:${NC}                $STRATEGY"
+    if [ "$STRATEGY" = "fedprox" ]; then
+        echo -e "  ${CYAN}Proximal Mu:${NC}             $PROXIMAL_MU"
+    fi
+    echo -e "  ${CYAN}Warmup Rounds:${NC}           $WARMUP_ROUNDS"
+    echo -e "  ${CYAN}Weight Decay:${NC}            $WEIGHT_DECAY"
+    echo -e "  ${CYAN}Early Stopping:${NC}          $EARLY_STOPPING"
+    echo -e "  ${CYAN}Early Stop Patience:${NC}    $EARLY_STOP_PATIENCE"
+
     echo -e "\n${YELLOW}Model Architecture Parameters:${NC}"
     echo -e "  ${CYAN}Sequence Length:${NC}         $SEQ_LEN"
     echo -e "  ${CYAN}Prediction Horizon:${NC}      $PRED_LEN"
@@ -706,8 +798,8 @@ run_flower() {
     cd "$FLOWER_APP_DIR"
     print_info "Changed to directory: $FLOWER_APP_DIR"
 
-    # Build Flower command
-    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE"
+    # Build Flower command (string values must be quoted for TOML format)
+    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE pred-len=$PRED_LEN strategy=\"$STRATEGY\" proximal-mu=$PROXIMAL_MU warmup-rounds=$WARMUP_ROUNDS weight-decay=$WEIGHT_DECAY early-stopping=$EARLY_STOPPING early-stop-patience=$EARLY_STOP_PATIENCE seq-len=$SEQ_LEN patch-size=$PATCH_SIZE stride=$STRIDE d-model=$D_MODEL hidden-size=$HIDDEN_SIZE kernel-size=$KERNEL_SIZE llm-layers=$LLM_LAYERS lora-r=$LORA_R lora-alpha=$LORA_ALPHA lora-dropout=$LORA_DROPOUT dropout=$DROPOUT"
 
     # Get the appropriate federation name based on client count
     FEDERATION_NAME=$(get_federation_name)
@@ -744,6 +836,14 @@ run_flower() {
         echo "  lr: $LEARNING_RATE"
         echo "  batch-size: $BATCH_SIZE"
         echo "  num-clients: $NUM_CLIENTS"
+        echo ""
+        echo "Strategy & Optimization Parameters:"
+        echo "  strategy: $STRATEGY"
+        echo "  proximal_mu: $PROXIMAL_MU"
+        echo "  warmup_rounds: $WARMUP_ROUNDS"
+        echo "  weight_decay: $WEIGHT_DECAY"
+        echo "  early_stopping: $EARLY_STOPPING"
+        echo "  early_stop_patience: $EARLY_STOP_PATIENCE"
         echo ""
         echo "Model Architecture Parameters:"
         echo "  seq_len: $SEQ_LEN"
@@ -813,10 +913,19 @@ run_flower() {
 main() {
     print_header "Federated Learning Experiment Setup"
 
-    # Parse arguments
+    # Parse arguments first (to get CONFIG_FILE if specified)
     parse_args "$@"
 
-    # Apply mode preset if specified
+    # Save command-line overrides before loading config
+    CMD_LINE_ARGS=("$@")
+
+    # Load configuration file (if specified or default exists)
+    load_config "$CONFIG_FILE"
+
+    # Re-parse command-line args to override config file values
+    parse_args "${CMD_LINE_ARGS[@]}"
+
+    # Apply mode preset if specified (mode overrides config file)
     if [ -n "$MODE" ]; then
         apply_mode
     fi
@@ -828,17 +937,6 @@ main() {
 
     # Display configuration
     display_config
-
-    # Confirm before proceeding (skip if auto-approved)
-    if [ "$DRY_RUN" = false ] && [ "$AUTO_APPROVE" = false ]; then
-        read -p "Proceed with this configuration? (y/n): " confirm
-        if [[ $confirm != "y" ]]; then
-            print_warning "Aborted by user"
-            exit 0
-        fi
-    elif [ "$AUTO_APPROVE" = true ]; then
-        print_info "Auto-approved (non-interactive mode)"
-    fi
 
     # Setup environment
     if [ "$SKIP_SETUP" = false ]; then
@@ -869,13 +967,13 @@ main() {
                 # Try to activate conda environment
                 if command -v conda &> /dev/null; then
                     eval "$(conda shell.bash hook)" 2>/dev/null
-                    conda activate flwr39 2>/dev/null && print_info "Conda environment 'flwr39' activated" || print_warning "Could not activate conda env 'flwr39'"
+                    conda activate "$CONDA_ENV" 2>/dev/null && print_info "Conda environment '$CONDA_ENV' activated" || print_warning "Could not activate conda env '$CONDA_ENV'"
                 fi
 
                 # Final check
                 if ! command -v flwr &> /dev/null; then
-                    print_error "flwr command not found. Please activate conda environment 'flwr39' first:"
-                    print_error "  conda activate flwr39"
+                    print_error "flwr command not found. Please activate conda environment '$CONDA_ENV' first:"
+                    print_error "  conda activate $CONDA_ENV"
                     exit 1
                 fi
             fi
@@ -883,8 +981,9 @@ main() {
         echo ""
     fi
 
-    # Update model configuration
-    update_model_config
+    # Update model configuration (DISABLED to allow parallel experiments)
+    # If you need to hardcode values in task.py, do it manually or via --setup
+    # update_model_config
 
     # Update number of clients
     # update_num_clients

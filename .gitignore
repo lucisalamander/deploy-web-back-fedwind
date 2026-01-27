@@ -52,3 +52,5 @@ Thumbs.db
 # Reports (optional - uncomment if you don't want to track)
 MD_FILES/
 # *.md
+
+node_modules/
