@@ -4,7 +4,7 @@ import importlib.util
 from types import SimpleNamespace
 
 import torch
-from torch.utils.data import Dataset, DataLoader, Subset
+from torch.utils.data import Dataset, DataLoader, Subset, ConcatDataset
 from my_flower_app.dataloader import Dataset_Custom
 import torch.nn as nn
 from torch.utils.data import random_split
@@ -310,7 +310,8 @@ def load_client_train(partition_id: int, num_partitions: int, bs: int = 32, cfg:
         size=(seq_len, label_len, pred_len),
         data_path=data_path,
         target=target,
-        scale=True
+        scale=True,
+        percent=100
     )
 
     logging.info(f"Client {partition_id}: Loaded {len(full_train.data_x)} raw CSV rows for training.")
@@ -374,4 +375,49 @@ def load_client_test(partition_id: int, bs: int = 32, cfg: SimpleNamespace = Non
     logging.info(f"Client {partition_id}: Loaded {len(test_dataset.data_x)} raw CSV rows for testing.")
     testloader = DataLoader(test_dataset, batch_size=bs, shuffle=False, drop_last=False)
     return testloader
+
+
+def _load_centralized(flag: str, bs: int, cfg: SimpleNamespace, shuffle: bool):
+    """
+    Load all 5 cities with the same per-city temporal split as federated,
+    then concatenate. Each city's 70/10/20 boundary is computed independently,
+    so the combined dataset is directly comparable to the federated setup.
+    """
+    if cfg is None:
+        raise ValueError("cfg must be provided. Use get_default_configs(pred_len=...) to create cfg.")
+
+    root_path = os.path.join(project_root, "datasets", "custom")
+    client_datasets = ["nasa_almaty.csv", "nasa_zhezkazgan.csv", "nasa_aktau.csv", "nasa_taraz.csv", "nasa_aktobe.csv"]
+    seq_len, label_len, pred_len = cfg.seq_len, 48, cfg.pred_len
+    target = "WS50M"
+
+    datasets = []
+    for i, data_path in enumerate(client_datasets):
+        ds = Dataset_Custom(
+            root_path=root_path,
+            flag=flag,
+            size=(seq_len, label_len, pred_len),
+            data_path=data_path,
+            target=target,
+            scale=True,
+            percent=100
+        )
+        logging.info(f"Centralized [{flag}] city {i} ({data_path}): {len(ds.data_x)} rows, {len(ds)} samples")
+        datasets.append(ds)
+
+    combined = ConcatDataset(datasets)
+    logging.info(f"Centralized [{flag}] total: {len(combined)} samples across {len(datasets)} cities")
+    return DataLoader(combined, batch_size=bs, shuffle=shuffle, drop_last=False)
+
+
+def load_centralized_train(bs: int = 32, cfg: SimpleNamespace = None):
+    return _load_centralized('train', bs, cfg, shuffle=True)
+
+
+def load_centralized_val(bs: int = 32, cfg: SimpleNamespace = None):
+    return _load_centralized('val', bs, cfg, shuffle=False)
+
+
+def load_centralized_test(bs: int = 32, cfg: SimpleNamespace = None):
+    return _load_centralized('test', bs, cfg, shuffle=False)
 
