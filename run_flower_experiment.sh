@@ -93,6 +93,14 @@ INTERACTIVE=false
 AUTO_APPROVE=false
 MODE=""
 
+# MLflow Options (optional)
+MLFLOW_ENABLE=false
+MLFLOW_TRACKING_URI=""
+MLFLOW_EXPERIMENT_NAME="flwr-experiments"
+MLFLOW_RUN_NAME=""
+MLFLOW_MODEL_NAME=""
+MLFLOW_TRAINING_MODE=""
+
 ################################################################################
 # Helper Functions
 ################################################################################
@@ -135,6 +143,15 @@ Setup Options:
     --dry-run                 Show what would be executed without running
     -i, --interactive         Interactive mode (prompt for all parameters)
     -y, --yes                 Auto-approve all prompts (non-interactive mode)
+
+MLflow Options (optional):
+    --mlflow                  Enable MLflow logging
+    --no-mlflow               Disable MLflow logging (default)
+    --mlflow-tracking-uri URI MLflow tracking URI (default: file:$PROJECT_ROOT/mlruns)
+    --mlflow-experiment NAME  MLflow experiment name (default: flwr-experiments)
+    --mlflow-run-name NAME    MLflow run name (default: auto)
+    --model-name NAME         Tag MLflow run with model name (e.g., GPT4TS, PatchTST)
+    --training-mode NAME      Tag MLflow run with training mode (centralized/fedavg/fedprox/scaffold)
 
 Note: By default, environment setup is SKIPPED for faster execution.
       Use --setup to explicitly run environment checks.
@@ -264,6 +281,34 @@ parse_args() {
             -y|--yes)
                 AUTO_APPROVE=true
                 shift
+                ;;
+            --mlflow)
+                MLFLOW_ENABLE=true
+                shift
+                ;;
+            --no-mlflow)
+                MLFLOW_ENABLE=false
+                shift
+                ;;
+            --mlflow-tracking-uri)
+                MLFLOW_TRACKING_URI="$2"
+                shift 2
+                ;;
+            --mlflow-experiment)
+                MLFLOW_EXPERIMENT_NAME="$2"
+                shift 2
+                ;;
+            --mlflow-run-name)
+                MLFLOW_RUN_NAME="$2"
+                shift 2
+                ;;
+            --model-name)
+                MLFLOW_MODEL_NAME="$2"
+                shift 2
+                ;;
+            --training-mode)
+                MLFLOW_TRAINING_MODE="$2"
+                shift 2
                 ;;
             --mode)
                 MODE="$2"
@@ -784,6 +829,22 @@ display_config() {
     echo -e "  ${CYAN}Clients Per Round:${NC}       ~$CLIENTS_PER_ROUND"
     echo -e "  ${CYAN}Final Learning Rate:${NC}     $FINAL_LR (after $NUM_ROUNDS rounds of decay)"
     echo -e "  ${CYAN}Working Directory:${NC}       $FLOWER_APP_DIR"
+    echo -e "  ${CYAN}MLflow Enabled:${NC}          $MLFLOW_ENABLE"
+    if [ "$MLFLOW_ENABLE" = true ]; then
+        echo -e "  ${CYAN}MLflow Experiment:${NC}       $MLFLOW_EXPERIMENT_NAME"
+        if [ -n "$MLFLOW_TRACKING_URI" ]; then
+            echo -e "  ${CYAN}MLflow Tracking URI:${NC}     $MLFLOW_TRACKING_URI"
+        fi
+        if [ -n "$MLFLOW_RUN_NAME" ]; then
+            echo -e "  ${CYAN}MLflow Run Name:${NC}         $MLFLOW_RUN_NAME"
+        fi
+        if [ -n "$MLFLOW_MODEL_NAME" ]; then
+            echo -e "  ${CYAN}MLflow Model Name:${NC}       $MLFLOW_MODEL_NAME"
+        fi
+        if [ -n "$MLFLOW_TRAINING_MODE" ]; then
+            echo -e "  ${CYAN}MLflow Training Mode:${NC}    $MLFLOW_TRAINING_MODE"
+        fi
+    fi
 
     echo ""
 }
@@ -870,6 +931,30 @@ run_flower() {
     export RAY_TMPDIR="/raid/tin_trungchau/tmp/ray"
     mkdir -p "$RAY_TMPDIR"
     print_info "Ray temp directory: $RAY_TMPDIR"
+
+    # Configure MLflow (optional)
+    if [ "$MLFLOW_ENABLE" = true ]; then
+        if [ -z "$MLFLOW_TRACKING_URI" ]; then
+            MLFLOW_TRACKING_URI="file:$PROJECT_ROOT/mlruns"
+        fi
+
+        if [ -z "$MLFLOW_RUN_NAME" ]; then
+            MLFLOW_RUN_NAME="$EXP_DIR"
+        fi
+
+        export MLFLOW_ENABLE=1
+        export MLFLOW_TRACKING_URI
+        export MLFLOW_EXPERIMENT_NAME
+        export MLFLOW_RUN_NAME
+
+        if [ -n "$MLFLOW_MODEL_NAME" ]; then
+            export MLFLOW_MODEL_NAME
+        fi
+
+        if [ -n "$MLFLOW_TRAINING_MODE" ]; then
+            export MLFLOW_TRAINING_MODE
+        fi
+    fi
 
     # Run with output capture
     LOG_FILE="$EXP_DIR/training.log"
