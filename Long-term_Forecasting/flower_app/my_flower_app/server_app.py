@@ -237,6 +237,9 @@ def main(grid: Grid, context: Context) -> None:
     early_stop_patience: int = context.run_config.get("early-stop-patience", 5)
     early_stop_enabled: bool = context.run_config.get("early-stopping", True)
 
+    # Model selection
+    model: str = context.run_config.get("model", "gpt4ts_nonlinear")
+
     # Model architecture parameters
     seq_len: int = context.run_config.get("seq-len", 336)
     patch_size: int = context.run_config.get("patch-size", 4)
@@ -263,9 +266,12 @@ def main(grid: Grid, context: Context) -> None:
         logging.info(f"Early stopping enabled with patience: {early_stop_patience}")
     logging.info(f"Experiment directory: {exp_dir}")
 
+    logging.info(f"Model: {model}")
+
     # Initialize model with configurable parameters
     configs = get_default_configs(
         pred_len=pred_len,
+        model=model,
         seq_len=seq_len,
         patch_size=patch_size,
         stride=stride,
@@ -306,6 +312,7 @@ def main(grid: Grid, context: Context) -> None:
         # CRITICAL FIX: Pass proximal_mu to clients for FedProx
         train_cfg = {
             "lr": lr,
+            "model": model,
             "pred_len": pred_len,
             "seq_len": seq_len,
             "patch_size": patch_size,

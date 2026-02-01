@@ -21,6 +21,7 @@ def train(msg: Message, context: Context):
     conf = msg.content["config"]
     configs = get_default_configs(
         pred_len=conf.get("pred_len", 120),
+        model=conf.get("model", "gpt4ts_nonlinear"),
         seq_len=conf.get("seq_len", 336),
         patch_size=conf.get("patch_size", 4),
         stride=conf.get("stride", 1),
@@ -125,6 +126,7 @@ def evaluate(msg: Message, context: Context):
     conf = context.run_config
     configs = get_default_configs(
         pred_len=conf.get("pred-len", 120),
+        model=conf.get("model", "gpt4ts_nonlinear"),
         seq_len=conf.get("seq-len", 336),
         patch_size=conf.get("patch-size", 4),
         stride=conf.get("stride", 1),
