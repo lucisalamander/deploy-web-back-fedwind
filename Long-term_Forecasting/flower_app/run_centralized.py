@@ -27,6 +27,7 @@ import logging
 from datetime import datetime
 
 import torch
+import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -174,7 +175,37 @@ def compute_lr(base_lr, current_round, warmup_rounds):
 # ---------------------------------------------------------------------------
 
 
-def evaluate_per_city(model, device, cfg_ns, bs):
+def _save_predictions_to_csv(preds, trues, exp_dir, city_id, round_num, split_name, pred_len):
+    """Save predictions vs ground truth in the same CSV format as client_app.py."""
+    if preds.size == 0:
+        logging.warning(f"[CENTRALIZED city {city_id}] No predictions to save for {split_name} split")
+        return
+
+    preds_2d = preds.reshape(-1, pred_len)
+    trues_2d = trues.reshape(-1, pred_len)
+
+    data = {}
+    for t in range(pred_len):
+        data[f"pred_t{t}"] = preds_2d[:, t]
+        data[f"true_t{t}"] = trues_2d[:, t]
+
+    data["sample_idx"] = np.arange(len(preds_2d))
+    data["client_id"] = city_id
+    data["round"] = round_num
+    data["split"] = split_name
+
+    metadata_cols = ["sample_idx", "client_id", "round", "split"]
+    pred_true_cols = [f"pred_t{t}" for t in range(pred_len)] + [f"true_t{t}" for t in range(pred_len)]
+    df = pd.DataFrame(data)[metadata_cols + pred_true_cols]
+
+    predictions_dir = os.path.join(exp_dir, "predictions")
+    os.makedirs(predictions_dir, exist_ok=True)
+    csv_path = os.path.join(predictions_dir, f"client{city_id}_round{round_num}_{split_name}.csv")
+    df.to_csv(csv_path, index=False)
+    logging.info(f"[CENTRALIZED city {city_id}] Saved {len(df)} {split_name} predictions to {csv_path}")
+
+
+def evaluate_per_city(model, device, cfg_ns, bs, exp_dir, round_num):
     val_losses, val_maes, val_rmses = [], [], []
     test_losses, test_maes, test_rmses = [], [], []
     val_durations, test_durations = [], []
@@ -184,12 +215,14 @@ def evaluate_per_city(model, device, cfg_ns, bs):
         testloader = load_client_test(city_id, bs=bs, cfg=cfg_ns)
 
         t0 = time.time()
-        v_loss, v_mae, v_rmse = test_fn(model, valloader, device)
+        v_loss, v_mae, v_rmse, val_preds, val_trues = test_fn(model, valloader, device, return_predictions=True)
         val_durations.append(time.time() - t0)
+        _save_predictions_to_csv(val_preds, val_trues, exp_dir, city_id, round_num, "val", cfg_ns.pred_len)
 
         t0 = time.time()
-        t_loss, t_mae, t_rmse = test_fn(model, testloader, device)
+        t_loss, t_mae, t_rmse, test_preds, test_trues = test_fn(model, testloader, device, return_predictions=True)
         test_durations.append(time.time() - t0)
+        _save_predictions_to_csv(test_preds, test_trues, exp_dir, city_id, round_num, "test", cfg_ns.pred_len)
 
         val_losses.append(v_loss)
         val_maes.append(v_mae)
@@ -298,7 +331,7 @@ def main():
         train_duration = time.time() - train_start
 
         # Evaluate per city, average equally
-        eval_metrics = evaluate_per_city(model, device, cfg_ns, cfg["batch_size"])
+        eval_metrics = evaluate_per_city(model, device, cfg_ns, cfg["batch_size"], exp_dir, r)
         round_duration = time.time() - round_start
 
         row = {
