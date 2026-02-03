@@ -49,6 +49,9 @@ seq-len = 336
 pred-len = 120
 
 # Model Architecture Parameters
+# Available: gpt4ts_nonlinear, gpt4ts_linear, bart_nonlinear, bart_linear,
+#            bert_nonlinear, bert_linear, llama_nonlinear, llama_linear
+model = "gpt4ts_nonlinear"
 patch-size = 4
 stride = 1
 d-model = 768

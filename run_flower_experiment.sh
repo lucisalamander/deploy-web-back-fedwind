@@ -81,6 +81,9 @@ LORA_ALPHA=16
 LORA_DROPOUT=0.0  # No dropout for LoRA
 DROPOUT=0.15  # Model dropout for regularization (default: 0.15)
 
+# Model selection (passed through to pyproject.toml via --run-config)
+MODEL="gpt4ts_nonlinear"
+
 # Conda environment
 CONDA_ENV=flwr39
 
@@ -384,6 +387,10 @@ parse_args() {
                 ;;
             --dropout)
                 DROPOUT="$2"
+                shift 2
+                ;;
+            --model)
+                MODEL="$2"
                 shift 2
                 ;;
             --strategy)
@@ -814,6 +821,7 @@ display_config() {
     echo -e "  ${CYAN}LoRA Alpha:${NC}              $LORA_ALPHA"
     echo -e "  ${CYAN}LoRA Dropout:${NC}            $LORA_DROPOUT"
     echo -e "  ${CYAN}Model Dropout:${NC}           $DROPOUT"
+    echo -e "  ${CYAN}LLM Backbone:${NC}            $MODEL"
 
     echo -e "\n${YELLOW}Dataset Information:${NC}"
     echo -e "  ${CYAN}Client Datasets:${NC}         5 NASA wind datasets (Almaty, Zhezkazgan, Aktau, Taraz, Aktobe)"
@@ -860,7 +868,7 @@ run_flower() {
     print_info "Changed to directory: $FLOWER_APP_DIR"
 
     # Build Flower command (string values must be quoted for TOML format)
-    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE pred-len=$PRED_LEN strategy=\"$STRATEGY\" proximal-mu=$PROXIMAL_MU warmup-rounds=$WARMUP_ROUNDS weight-decay=$WEIGHT_DECAY early-stopping=$EARLY_STOPPING early-stop-patience=$EARLY_STOP_PATIENCE seq-len=$SEQ_LEN patch-size=$PATCH_SIZE stride=$STRIDE d-model=$D_MODEL hidden-size=$HIDDEN_SIZE kernel-size=$KERNEL_SIZE llm-layers=$LLM_LAYERS lora-r=$LORA_R lora-alpha=$LORA_ALPHA lora-dropout=$LORA_DROPOUT dropout=$DROPOUT"
+    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE pred-len=$PRED_LEN strategy=\"$STRATEGY\" proximal-mu=$PROXIMAL_MU warmup-rounds=$WARMUP_ROUNDS weight-decay=$WEIGHT_DECAY early-stopping=$EARLY_STOPPING early-stop-patience=$EARLY_STOP_PATIENCE seq-len=$SEQ_LEN patch-size=$PATCH_SIZE stride=$STRIDE d-model=$D_MODEL hidden-size=$HIDDEN_SIZE kernel-size=$KERNEL_SIZE llm-layers=$LLM_LAYERS lora-r=$LORA_R lora-alpha=$LORA_ALPHA lora-dropout=$LORA_DROPOUT dropout=$DROPOUT model=\"$MODEL\""
 
     # Get the appropriate federation name based on client count
     FEDERATION_NAME=$(get_federation_name)
@@ -919,6 +927,7 @@ run_flower() {
         echo "  lora_alpha: $LORA_ALPHA"
         echo "  lora_dropout: $LORA_DROPOUT"
         echo "  dropout: $DROPOUT"
+        echo "  model: $MODEL"
     } > "$CONFIG_FILE"
 
     print_info "Saved configuration to: $EXP_DIR_FULL/config.txt"

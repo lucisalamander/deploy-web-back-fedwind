@@ -4,7 +4,7 @@ import importlib.util
 from types import SimpleNamespace
 
 import torch
-from torch.utils.data import Dataset, DataLoader, Subset
+from torch.utils.data import Dataset, DataLoader, Subset, ConcatDataset
 from my_flower_app.dataloader import Dataset_Custom
 import torch.nn as nn
 from torch.utils.data import random_split
@@ -18,16 +18,39 @@ logging.basicConfig(level=logging.INFO, format= '%(asctime)s - %(levelname)s - %
 
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-model_path = os.path.join(project_root, "models", "GPT4TS.py")
 
-spec = importlib.util.spec_from_file_location("GPT4TS", model_path)
-GPT4TS = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(GPT4TS)
+# ---------------------------------------------------------------------------
+# Model registry: model_name -> (module_filename, class_name, backbone_flag)
+#   backbone_flag is the configs attribute that gates the LLM backbone
+# ---------------------------------------------------------------------------
+MODEL_REGISTRY = {
+    "gpt4ts_nonlinear": ("GPT4TS", "GPT4TS_Nonlinear", "is_gpt"),
+    "gpt4ts_linear":    ("GPT4TS", "GPT4TS_Linear",    "is_gpt"),
+    "bart_nonlinear":   ("BART",   "BART_Nonlinear",   "is_bart"),
+    "bart_linear":      ("BART",   "BART_Linear",      "is_bart"),
+    "bert_nonlinear":   ("BERT",   "BERT_Nonlinear",   "is_bert"),
+    "bert_linear":      ("BERT",   "BERT_Linear",      "is_bert"),
+    "llama_nonlinear":  ("LLAMA",  "Llama_Nonlinear",  "is_llama"),
+    "llama_linear":     ("LLAMA",  "Llama_Linear",     "is_llama"),
+}
 
-GPT4TS_Nonlinear = GPT4TS.GPT4TS_Nonlinear
+
+def _load_model_class(model_name: str):
+    if model_name not in MODEL_REGISTRY:
+        raise ValueError(
+            f"Unknown model '{model_name}'. Available: {list(MODEL_REGISTRY.keys())}"
+        )
+    module_filename, class_name, _ = MODEL_REGISTRY[model_name]
+    model_path = os.path.join(project_root, "models", f"{module_filename}.py")
+
+    spec = importlib.util.spec_from_file_location(module_filename, model_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return getattr(module, class_name)
 
 def get_default_configs(
     pred_len,
+    model="gpt4ts_nonlinear",
     seq_len=336,
     patch_size=4,
     stride=1,
@@ -46,14 +69,28 @@ def get_default_configs(
 
     Args:
         pred_len: Prediction length (forecast horizon). REQUIRED - must be specified.
-        use_lora: Whether to enable LoRA fine-tuning (default: True)
+        model: Which model to use. One of: gpt4ts_nonlinear, gpt4ts_linear,
+               bart_nonlinear, bart_linear, bert_nonlinear, bert_linear,
+               llama_nonlinear, llama_linear (default: gpt4ts_nonlinear)
+        use_lora: Whether to enable LoRA fine-tuning (default: True).
         ... other parameters are optional and have defaults matching the baseline.
     """
+    if model not in MODEL_REGISTRY:
+        raise ValueError(
+            f"Unknown model '{model}'. Available: {list(MODEL_REGISTRY.keys())}"
+        )
+
+    # Determine which backbone flag to enable based on the selected model
+    _, _, backbone_flag = MODEL_REGISTRY[model]
+
     return SimpleNamespace(
-        # model behavior
-        is_gpt=True,
+        model=model,
+        is_gpt=(backbone_flag == "is_gpt"),
+        is_bart=(backbone_flag == "is_bart"),
+        is_bert=(backbone_flag == "is_bert"),
+        is_llama=(backbone_flag == "is_llama"),
         pretrain=True,
-        freeze=True,  # Freeze GPT2 base, only train LoRA adapters + LayerNorm
+        freeze=True,  # Freeze base LLM, only train adapters + LayerNorm
         use_lora=use_lora,
         # data/patching
         seq_len=seq_len,
@@ -75,7 +112,7 @@ def get_default_configs(
 class Net(nn.Module):
     """
     A thin wrapper so instantiating Net() works in your Flower server/client code.
-    The wrapper holds the GPT4TS model and forwards calls:
+    The wrapper holds any model from MODEL_REGISTRY and forwards calls:
       - forward(x): expects x.shape == [B, seq_len, 1]
       returns predictions shape [B, pred_len, 1]
     """
@@ -86,10 +123,14 @@ class Net(nn.Module):
             raise ValueError("configs must be provided to Net(). Use get_default_configs(pred_len=1X) to create configs.")
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logging.info(f"Initializing Net wrapper on device: {device}")
+
+        model_name = getattr(configs, "model", "gpt4ts_nonlinear")
+        logging.info(f"Initializing Net wrapper: model={model_name}, device={device}")
         self.device = device
         self.configs = configs
-        self.model = GPT4TS_Nonlinear(configs, device)
+
+        model_class = _load_model_class(model_name)
+        self.model = model_class(configs, device)
         self.to(device)
 
     def forward(self, x):
@@ -310,7 +351,8 @@ def load_client_train(partition_id: int, num_partitions: int, bs: int = 32, cfg:
         size=(seq_len, label_len, pred_len),
         data_path=data_path,
         target=target,
-        scale=True
+        scale=True,
+        percent=100
     )
 
     logging.info(f"Client {partition_id}: Loaded {len(full_train.data_x)} raw CSV rows for training.")
@@ -374,4 +416,49 @@ def load_client_test(partition_id: int, bs: int = 32, cfg: SimpleNamespace = Non
     logging.info(f"Client {partition_id}: Loaded {len(test_dataset.data_x)} raw CSV rows for testing.")
     testloader = DataLoader(test_dataset, batch_size=bs, shuffle=False, drop_last=False)
     return testloader
+
+
+def _load_centralized(flag: str, bs: int, cfg: SimpleNamespace, shuffle: bool):
+    """
+    Load all 5 cities with the same per-city temporal split as federated,
+    then concatenate. Each city's 70/10/20 boundary is computed independently,
+    so the combined dataset is directly comparable to the federated setup.
+    """
+    if cfg is None:
+        raise ValueError("cfg must be provided. Use get_default_configs(pred_len=...) to create cfg.")
+
+    root_path = os.path.join(project_root, "datasets", "custom")
+    client_datasets = ["nasa_almaty.csv", "nasa_zhezkazgan.csv", "nasa_aktau.csv", "nasa_taraz.csv", "nasa_aktobe.csv"]
+    seq_len, label_len, pred_len = cfg.seq_len, 48, cfg.pred_len
+    target = "WS50M"
+
+    datasets = []
+    for i, data_path in enumerate(client_datasets):
+        ds = Dataset_Custom(
+            root_path=root_path,
+            flag=flag,
+            size=(seq_len, label_len, pred_len),
+            data_path=data_path,
+            target=target,
+            scale=True,
+            percent=100
+        )
+        logging.info(f"Centralized [{flag}] city {i} ({data_path}): {len(ds.data_x)} rows, {len(ds)} samples")
+        datasets.append(ds)
+
+    combined = ConcatDataset(datasets)
+    logging.info(f"Centralized [{flag}] total: {len(combined)} samples across {len(datasets)} cities")
+    return DataLoader(combined, batch_size=bs, shuffle=shuffle, drop_last=False)
+
+
+def load_centralized_train(bs: int = 32, cfg: SimpleNamespace = None):
+    return _load_centralized('train', bs, cfg, shuffle=True)
+
+
+def load_centralized_val(bs: int = 32, cfg: SimpleNamespace = None):
+    return _load_centralized('val', bs, cfg, shuffle=False)
+
+
+def load_centralized_test(bs: int = 32, cfg: SimpleNamespace = None):
+    return _load_centralized('test', bs, cfg, shuffle=False)
 
