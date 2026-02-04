@@ -358,7 +358,12 @@ main() {
             fi
         else
             print_info "Loading standard experiment list from: $CONFIG_FILE"
-            mapfile -t experiments < <(grep -v '^#' "$CONFIG_FILE" | grep -v '^$')
+            if grep -q "^[A-Za-z0-9_]\+=" "$CONFIG_FILE" && ! grep -q "^--" "$CONFIG_FILE"; then
+                print_info "Detected shell-style config (KEY=VALUE). Running single experiment with --config."
+                experiments=("--config $CONFIG_FILE")
+            else
+                mapfile -t experiments < <(grep -v '^#' "$CONFIG_FILE" | grep -v '^$')
+            fi
         fi
     else
         print_error "Either --config or --grid-search must be specified"
