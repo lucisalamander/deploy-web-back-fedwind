@@ -56,6 +56,134 @@ class FedAvgWithMetrics(FedAvg):
         self.client_test_maes = []
         self.client_test_rmses = []
         self.client_test_durations = []
+        # Optional: Per-client history (if we can extract client IDs)
+        self.train_history = defaultdict(list)
+        self.eval_history = defaultdict(list)
+
+    def aggregate_fit(self, grid, config, messages):
+        """Override to collect training metrics from clients."""
+        self.client_train_losses = []
+        self.client_train_durations = []
+
+        logging.info(f"[DEBUG] aggregate_fit called with {len(messages)} messages")
+        server_round = config.get("server_round", -1)
+
+        for idx, msg in enumerate(messages):
+            if not msg.has_content():
+                logging.warning("[DEBUG] Message has no content, skipping")
+                continue
+
+            logging.info(f"[DEBUG] Message content keys: {msg.content.keys()}")
+            if "metrics" in msg.content:
+                metrics = msg.content["metrics"]
+                if hasattr(metrics, 'data'):
+                    metrics_dict = metrics.data
+                else:
+                    metrics_dict = metrics
+
+                logging.info(f"[DEBUG] Metrics dict: {metrics_dict}")
+
+                # Extract metrics
+                train_loss = metrics_dict.get("train_loss")
+                train_duration = metrics_dict.get("train_duration_sec")
+
+                if train_loss is not None:
+                    self.client_train_losses.append(float(train_loss))
+                if train_duration is not None:
+                    self.client_train_durations.append(float(train_duration))
+
+                # Try to get client_id (if available in metrics)
+                client_id = metrics_dict.get("client_id", f"client_{idx}")
+
+                # Store in per-client history
+                self.train_history[client_id].append({
+                    "round": server_round,
+                    "train_loss": float(train_loss) if train_loss is not None else None,
+                    "train_duration_sec": float(train_duration) if train_duration is not None else None,
+                })
+            else:
+                logging.warning(f"[DEBUG] No 'metrics' key found in message content")
+
+        logging.info(f"[DEBUG] Collected {len(self.client_train_losses)} train losses and {len(self.client_train_durations)} durations")
+
+        return super().aggregate_fit(grid, config, messages)
+
+    def aggregate_evaluate(self, grid, messages):
+        """Override to collect evaluation metrics from clients."""
+        self.client_val_losses = []
+        self.client_val_maes = []
+        self.client_val_rmses = []
+        self.client_val_durations = []
+        self.client_test_losses = []
+        self.client_test_maes = []
+        self.client_test_rmses = []
+        self.client_test_durations = []
+
+        logging.info(f"[DEBUG] aggregate_evaluate called with {len(messages)} messages")
+        # Try to get server round from grid context if available
+        server_round = getattr(grid, 'server_round', -1)
+
+        for idx, msg in enumerate(messages):
+            if not msg.has_content():
+                logging.warning("[DEBUG] Message has no content in aggregate_evaluate, skipping")
+                continue
+            if "metrics" in msg.content:
+                metrics = msg.content["metrics"]
+                if hasattr(metrics, 'data'):
+                    metrics_dict = metrics.data
+                else:
+                    metrics_dict = metrics
+
+                logging.info(f"[DEBUG] Eval Metrics dict: {metrics_dict}")
+
+                # Validation metrics
+                val_loss = metrics_dict.get("val_loss")
+                val_mae = metrics_dict.get("val_mae")
+                val_rmse = metrics_dict.get("val_rmse")
+                val_duration = metrics_dict.get("val_duration_sec")
+
+                if val_loss is not None:
+                    self.client_val_losses.append(float(val_loss))
+                if val_mae is not None:
+                    self.client_val_maes.append(float(val_mae))
+                if val_rmse is not None:
+                    self.client_val_rmses.append(float(val_rmse))
+                if val_duration is not None:
+                    self.client_val_durations.append(float(val_duration))
+
+                # Test metrics
+                test_loss = metrics_dict.get("test_loss")
+                test_mae = metrics_dict.get("test_mae")
+                test_rmse = metrics_dict.get("test_rmse")
+                test_duration = metrics_dict.get("test_duration_sec")
+
+                if test_loss is not None:
+                    self.client_test_losses.append(float(test_loss))
+                if test_mae is not None:
+                    self.client_test_maes.append(float(test_mae))
+                if test_rmse is not None:
+                    self.client_test_rmses.append(float(test_rmse))
+                if test_duration is not None:
+                    self.client_test_durations.append(float(test_duration))
+
+                # Try to get client_id (if available in metrics)
+                client_id = metrics_dict.get("client_id", f"client_{idx}")
+
+                # Store in per-client history
+                self.eval_history[client_id].append({
+                    "round": server_round,
+                    "val_loss": float(val_loss) if val_loss is not None else None,
+                    "val_mae": float(val_mae) if val_mae is not None else None,
+                    "val_rmse": float(val_rmse) if val_rmse is not None else None,
+                    "val_duration_sec": float(val_duration) if val_duration is not None else None,
+                    "test_loss": float(test_loss) if test_loss is not None else None,
+                    "test_mae": float(test_mae) if test_mae is not None else None,
+                    "test_rmse": float(test_rmse) if test_rmse is not None else None,
+                    "test_duration_sec": float(test_duration) if test_duration is not None else None,
+                })
+
+        logging.info(f"[DEBUG] Collected {len(self.client_val_losses)} val losses, {len(self.client_test_losses)} test losses")
+        return super().aggregate_evaluate(grid, messages)
 
 
 class FedProxWithMetrics(FedAvg):
