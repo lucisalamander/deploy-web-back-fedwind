@@ -47,6 +47,7 @@ early-stop-patience = 5
 # Time Series Forecasting Parameters
 seq-len = 336
 pred-len = 120
+label-len = 48
 
 # Model Architecture Parameters
 # Available: gpt4ts_nonlinear, gpt4ts_linear, bart_nonlinear, bart_linear,
@@ -58,6 +59,29 @@ d-model = 768
 hidden-size = 16
 kernel-size = 3
 llm-layers = 4
+enc-in = 1
+dec-in = 1
+c-out = 1
+embed-type = 0
+embed = "timeF"
+freq = "h"
+factor = 1
+n-heads = 4
+e-layers = 2
+d-layers = 1
+d-ff = 512
+distil = true
+activation = "gelu"
+output-attention = false
+fc-dropout = 0.05
+head-dropout = 0.0
+patch-len = 16
+padding-patch = "end"
+revin = 1
+affine = 0
+subtract-last = 0
+decomposition = 0
+individual = 0
 
 # LoRA Parameters
 lora-r = 8

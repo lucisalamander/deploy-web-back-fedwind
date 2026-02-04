@@ -70,12 +70,36 @@ EARLY_STOP_PATIENCE=5       # Number of rounds without improvement before stoppi
 # Model Architecture Parameters (requires code modification)
 SEQ_LEN=336
 PRED_LEN=120
+LABEL_LEN=48
 PATCH_SIZE=4
 STRIDE=1
 D_MODEL=768
 HIDDEN_SIZE=16
 KERNEL_SIZE=3
 LLM_LAYERS=4
+ENC_IN=1
+DEC_IN=1
+C_OUT=1
+EMBED_TYPE=0
+EMBED="timeF"
+FREQ="h"
+FACTOR=1
+N_HEADS=4
+E_LAYERS=2
+D_LAYERS=1
+D_FF=512
+DISTIL=true
+ACTIVATION="gelu"
+OUTPUT_ATTENTION=false
+FC_DROPOUT=0.05
+HEAD_DROPOUT=0.0
+PATCH_LEN=16
+PADDING_PATCH="end"
+REVIN=1
+AFFINE=0
+SUBTRACT_LAST=0
+DECOMPOSITION=0
+INDIVIDUAL=0
 LORA_R=8
 LORA_ALPHA=16
 LORA_DROPOUT=0.0  # No dropout for LoRA
@@ -95,6 +119,14 @@ DRY_RUN=false
 INTERACTIVE=false
 AUTO_APPROVE=false
 MODE=""
+
+# MLflow Options (optional)
+MLFLOW_ENABLE=false
+MLFLOW_TRACKING_URI=""
+MLFLOW_EXPERIMENT_NAME="flwr-experiments"
+MLFLOW_RUN_NAME=""
+MLFLOW_MODEL_NAME=""
+MLFLOW_TRAINING_MODE=""
 
 ################################################################################
 # Helper Functions
@@ -139,6 +171,15 @@ Setup Options:
     -i, --interactive         Interactive mode (prompt for all parameters)
     -y, --yes                 Auto-approve all prompts (non-interactive mode)
 
+MLflow Options (optional):
+    --mlflow                  Enable MLflow logging
+    --no-mlflow               Disable MLflow logging (default)
+    --mlflow-tracking-uri URI MLflow tracking URI (default: file:$PROJECT_ROOT/mlruns)
+    --mlflow-experiment NAME  MLflow experiment name (default: flwr-experiments)
+    --mlflow-run-name NAME    MLflow run name (default: auto)
+    --model-name NAME         Tag MLflow run with model name (e.g., GPT4TS, PatchTST)
+    --training-mode NAME      Tag MLflow run with training mode (centralized/fedavg/fedprox/scaffold)
+
 Note: By default, environment setup is SKIPPED for faster execution.
       Use --setup to explicitly run environment checks.
 
@@ -159,12 +200,36 @@ Federated Learning Parameters:
 Model Architecture Parameters:
     --seq-len NUM             Input sequence length (default: 336)
     --pred-len NUM            Prediction horizon (default: 120)
+    --label-len NUM           Label length for Informer (default: 48)
     --patch-size NUM          Patch size (default: 4)
     --stride NUM              Stride (default: 1)
     --d-model NUM             Model dimension (default: 128)
     --hidden-size NUM         Hidden layer size (default: 128)
     --kernel-size NUM         Convolution kernel size (default: 3)
     --llm-layers NUM          Number of LLM layers (default: 2)
+    --enc-in NUM              Encoder input size (default: 1)
+    --dec-in NUM              Decoder input size (default: 1)
+    --c-out NUM               Output size (default: 1)
+    --embed-type NUM          Embed type (default: 0)
+    --embed STR               Embed mode (default: timeF)
+    --freq STR                Time feature frequency (default: h)
+    --factor NUM              Attention factor (default: 1)
+    --n-heads NUM             Number of attention heads (default: 4)
+    --e-layers NUM            Encoder layers (default: 2)
+    --d-layers NUM            Decoder layers (default: 1)
+    --d-ff NUM                Feed-forward dimension (default: 512)
+    --distil BOOL             Use distillation in encoder (default: true)
+    --activation STR          Activation (default: gelu)
+    --output-attention BOOL   Output attention (default: false)
+    --fc-dropout FLOAT        PatchTST FC dropout (default: 0.05)
+    --head-dropout FLOAT      PatchTST head dropout (default: 0.0)
+    --patch-len NUM           PatchTST patch length (default: 16)
+    --padding-patch STR       PatchTST padding mode (default: end)
+    --revin NUM               PatchTST RevIN (1/0, default: 1)
+    --affine NUM              PatchTST RevIN affine (1/0, default: 0)
+    --subtract-last NUM       PatchTST subtract last (1/0, default: 0)
+    --decomposition NUM       PatchTST decomposition (1/0, default: 0)
+    --individual NUM          PatchTST individual head (1/0, default: 0)
     --lora-r NUM              LoRA rank (default: 8)
     --lora-alpha NUM          LoRA alpha (default: 16)
     --lora-dropout FLOAT      LoRA dropout (default: 0.1)
@@ -225,6 +290,9 @@ load_config() {
     # Source the config file (it's a bash script with KEY=VALUE pairs)
     # shellcheck disable=SC1090
     source "$config_file"
+    if [ -n "$MODEL_NAME" ] && [ "$MODEL" = "gpt4ts_nonlinear" ]; then
+        MODEL="$MODEL_NAME"
+    fi
 
     print_success "Configuration loaded successfully"
 }
@@ -268,6 +336,34 @@ parse_args() {
                 AUTO_APPROVE=true
                 shift
                 ;;
+            --mlflow)
+                MLFLOW_ENABLE=true
+                shift
+                ;;
+            --no-mlflow)
+                MLFLOW_ENABLE=false
+                shift
+                ;;
+            --mlflow-tracking-uri)
+                MLFLOW_TRACKING_URI="$2"
+                shift 2
+                ;;
+            --mlflow-experiment)
+                MLFLOW_EXPERIMENT_NAME="$2"
+                shift 2
+                ;;
+            --mlflow-run-name)
+                MLFLOW_RUN_NAME="$2"
+                shift 2
+                ;;
+            --model-name)
+                MLFLOW_MODEL_NAME="$2"
+                shift 2
+                ;;
+            --training-mode)
+                MLFLOW_TRAINING_MODE="$2"
+                shift 2
+                ;;
             --mode)
                 MODE="$2"
                 shift 2
@@ -304,6 +400,10 @@ parse_args() {
                 PRED_LEN="$2"
                 shift 2
                 ;;
+            --label-len)
+                LABEL_LEN="$2"
+                shift 2
+                ;;
             --patch-size)
                 PATCH_SIZE="$2"
                 shift 2
@@ -326,6 +426,98 @@ parse_args() {
                 ;;
             --llm-layers)
                 LLM_LAYERS="$2"
+                shift 2
+                ;;
+            --enc-in)
+                ENC_IN="$2"
+                shift 2
+                ;;
+            --dec-in)
+                DEC_IN="$2"
+                shift 2
+                ;;
+            --c-out)
+                C_OUT="$2"
+                shift 2
+                ;;
+            --embed-type)
+                EMBED_TYPE="$2"
+                shift 2
+                ;;
+            --embed)
+                EMBED="$2"
+                shift 2
+                ;;
+            --freq)
+                FREQ="$2"
+                shift 2
+                ;;
+            --factor)
+                FACTOR="$2"
+                shift 2
+                ;;
+            --n-heads)
+                N_HEADS="$2"
+                shift 2
+                ;;
+            --e-layers)
+                E_LAYERS="$2"
+                shift 2
+                ;;
+            --d-layers)
+                D_LAYERS="$2"
+                shift 2
+                ;;
+            --d-ff)
+                D_FF="$2"
+                shift 2
+                ;;
+            --distil)
+                DISTIL="$2"
+                shift 2
+                ;;
+            --activation)
+                ACTIVATION="$2"
+                shift 2
+                ;;
+            --output-attention)
+                OUTPUT_ATTENTION="$2"
+                shift 2
+                ;;
+            --fc-dropout)
+                FC_DROPOUT="$2"
+                shift 2
+                ;;
+            --head-dropout)
+                HEAD_DROPOUT="$2"
+                shift 2
+                ;;
+            --patch-len)
+                PATCH_LEN="$2"
+                shift 2
+                ;;
+            --padding-patch)
+                PADDING_PATCH="$2"
+                shift 2
+                ;;
+            --revin)
+                REVIN="$2"
+                shift 2
+                ;;
+            --affine)
+                AFFINE="$2"
+                shift 2
+                ;;
+            --subtract-last)
+                SUBTRACT_LAST="$2"
+                shift 2
+                ;;
+            --decomposition)
+                DECOMPOSITION="$2"
+                shift 2
+                ;;
+            --individual)
+                INDIVIDUAL="$2"
                 shift 2
                 ;;
             --lora-r)
@@ -792,6 +984,22 @@ display_config() {
     echo -e "  ${CYAN}Clients Per Round:${NC}       ~$CLIENTS_PER_ROUND"
     echo -e "  ${CYAN}Final Learning Rate:${NC}     $FINAL_LR (after $NUM_ROUNDS rounds of decay)"
     echo -e "  ${CYAN}Working Directory:${NC}       $FLOWER_APP_DIR"
+    echo -e "  ${CYAN}MLflow Enabled:${NC}          $MLFLOW_ENABLE"
+    if [ "$MLFLOW_ENABLE" = true ]; then
+        echo -e "  ${CYAN}MLflow Experiment:${NC}       $MLFLOW_EXPERIMENT_NAME"
+        if [ -n "$MLFLOW_TRACKING_URI" ]; then
+            echo -e "  ${CYAN}MLflow Tracking URI:${NC}     $MLFLOW_TRACKING_URI"
+        fi
+        if [ -n "$MLFLOW_RUN_NAME" ]; then
+            echo -e "  ${CYAN}MLflow Run Name:${NC}         $MLFLOW_RUN_NAME"
+        fi
+        if [ -n "$MLFLOW_MODEL_NAME" ]; then
+            echo -e "  ${CYAN}MLflow Model Name:${NC}       $MLFLOW_MODEL_NAME"
+        fi
+        if [ -n "$MLFLOW_TRAINING_MODE" ]; then
+            echo -e "  ${CYAN}MLflow Training Mode:${NC}    $MLFLOW_TRAINING_MODE"
+        fi
+    fi
 
     echo ""
 }
@@ -807,7 +1015,7 @@ run_flower() {
     print_info "Changed to directory: $FLOWER_APP_DIR"
 
     # Build Flower command (string values must be quoted for TOML format)
-    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE pred-len=$PRED_LEN strategy=\"$STRATEGY\" proximal-mu=$PROXIMAL_MU warmup-rounds=$WARMUP_ROUNDS weight-decay=$WEIGHT_DECAY early-stopping=$EARLY_STOPPING early-stop-patience=$EARLY_STOP_PATIENCE seq-len=$SEQ_LEN patch-size=$PATCH_SIZE stride=$STRIDE d-model=$D_MODEL hidden-size=$HIDDEN_SIZE kernel-size=$KERNEL_SIZE llm-layers=$LLM_LAYERS lora-r=$LORA_R lora-alpha=$LORA_ALPHA lora-dropout=$LORA_DROPOUT dropout=$DROPOUT model=\"$MODEL\""
+    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE pred-len=$PRED_LEN label-len=$LABEL_LEN strategy=\"$STRATEGY\" proximal-mu=$PROXIMAL_MU warmup-rounds=$WARMUP_ROUNDS weight-decay=$WEIGHT_DECAY early-stopping=$EARLY_STOPPING early-stop-patience=$EARLY_STOP_PATIENCE seq-len=$SEQ_LEN patch-size=$PATCH_SIZE stride=$STRIDE d-model=$D_MODEL hidden-size=$HIDDEN_SIZE kernel-size=$KERNEL_SIZE llm-layers=$LLM_LAYERS enc-in=$ENC_IN dec-in=$DEC_IN c-out=$C_OUT embed-type=$EMBED_TYPE embed=\"$EMBED\" freq=\"$FREQ\" factor=$FACTOR n-heads=$N_HEADS e-layers=$E_LAYERS d-layers=$D_LAYERS d-ff=$D_FF distil=$DISTIL activation=\"$ACTIVATION\" output-attention=$OUTPUT_ATTENTION fc-dropout=$FC_DROPOUT head-dropout=$HEAD_DROPOUT patch-len=$PATCH_LEN padding-patch=\"$PADDING_PATCH\" revin=$REVIN affine=$AFFINE subtract-last=$SUBTRACT_LAST decomposition=$DECOMPOSITION individual=$INDIVIDUAL lora-r=$LORA_R lora-alpha=$LORA_ALPHA lora-dropout=$LORA_DROPOUT dropout=$DROPOUT model=\"$MODEL\""
 
     # Get the appropriate federation name based on client count
     FEDERATION_NAME=$(get_federation_name)
@@ -879,6 +1087,30 @@ run_flower() {
     export RAY_TMPDIR="/raid/tin_trungchau/tmp/ray"
     mkdir -p "$RAY_TMPDIR"
     print_info "Ray temp directory: $RAY_TMPDIR"
+
+    # Configure MLflow (optional)
+    if [ "$MLFLOW_ENABLE" = true ]; then
+        if [ -z "$MLFLOW_TRACKING_URI" ]; then
+            MLFLOW_TRACKING_URI="file:$PROJECT_ROOT/mlruns"
+        fi
+
+        if [ -z "$MLFLOW_RUN_NAME" ]; then
+            MLFLOW_RUN_NAME="$EXP_DIR"
+        fi
+
+        export MLFLOW_ENABLE=1
+        export MLFLOW_TRACKING_URI
+        export MLFLOW_EXPERIMENT_NAME
+        export MLFLOW_RUN_NAME
+
+        if [ -n "$MLFLOW_MODEL_NAME" ]; then
+            export MLFLOW_MODEL_NAME
+        fi
+
+        if [ -n "$MLFLOW_TRAINING_MODE" ]; then
+            export MLFLOW_TRAINING_MODE
+        fi
+    fi
 
     # Run with output capture
     LOG_FILE="$EXP_DIR/training.log"
