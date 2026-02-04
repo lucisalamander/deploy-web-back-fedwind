@@ -69,6 +69,7 @@ DEFAULTS = {
     "lora_alpha": 16,
     "lora_dropout": 0.15,
     "dropout": 0.15,
+    "model": "gpt4ts_nonlinear",
 }
 
 # Maps .conf shell-variable names  ->  (internal key, type)
@@ -92,6 +93,7 @@ CONF_KEY_MAP = {
     "LORA_ALPHA": ("lora_alpha", int),
     "LORA_DROPOUT": ("lora_dropout", float),
     "DROPOUT": ("dropout", float),
+    "MODEL": ("model", str),
 }
 
 
@@ -132,6 +134,7 @@ def build_parser():
     p.add_argument("--lora-alpha", type=int, default=None)
     p.add_argument("--lora-dropout", type=float, default=None)
     p.add_argument("--dropout", type=float, default=None)
+    p.add_argument("--model", type=str, default=None)
     p.add_argument("--exp-dir", type=str, default=None)
     return p
 
@@ -288,6 +291,7 @@ def main():
     logging.info(f"Device: {device}")
 
     cfg_ns = get_default_configs(
+        model=cfg["model"],
         pred_len=cfg["pred_len"],
         seq_len=cfg["seq_len"],
         patch_size=cfg["patch_size"],
