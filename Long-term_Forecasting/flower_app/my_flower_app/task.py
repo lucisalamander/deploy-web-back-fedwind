@@ -18,20 +18,33 @@ logging.basicConfig(level=logging.INFO, format= '%(asctime)s - %(levelname)s - %
 
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+# Repo root is two levels above project_root (Long-term_Forecasting -> federated_learning -> repo)
+repo_root = os.path.abspath(os.path.join(project_root, "..", ".."))
+baselines_root = os.path.join(repo_root, "BASELINES")
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+if baselines_root not in sys.path:
+    sys.path.insert(0, baselines_root)
+if baselines_root not in sys.path:
+    sys.path.insert(0, baselines_root)
 
 # ---------------------------------------------------------------------------
-# Model registry: model_name -> (module_filename, class_name, backbone_flag)
+# Model registry:
+#   model_name -> (module_filename, class_name, backbone_flag, base_dir, model_family)
 #   backbone_flag is the configs attribute that gates the LLM backbone
+#   base_dir: "llm" (project_root/models) or "baselines" (baselines_root/models)
 # ---------------------------------------------------------------------------
 MODEL_REGISTRY = {
-    "gpt4ts_nonlinear": ("GPT4TS", "GPT4TS_Nonlinear", "is_gpt"),
-    "gpt4ts_linear":    ("GPT4TS", "GPT4TS_Linear",    "is_gpt"),
-    "bart_nonlinear":   ("BART",   "BART_Nonlinear",   "is_bart"),
-    "bart_linear":      ("BART",   "BART_Linear",      "is_bart"),
-    "bert_nonlinear":   ("BERT",   "BERT_Nonlinear",   "is_bert"),
-    "bert_linear":      ("BERT",   "BERT_Linear",      "is_bert"),
-    "llama_nonlinear":  ("LLAMA",  "Llama_Nonlinear",  "is_llama"),
-    "llama_linear":     ("LLAMA",  "Llama_Linear",     "is_llama"),
+    "gpt4ts_nonlinear": ("GPT4TS", "GPT4TS_Nonlinear", "is_gpt",   "llm",      "llm"),
+    "gpt4ts_linear":    ("GPT4TS", "GPT4TS_Linear",    "is_gpt",   "llm",      "llm"),
+    "bart_nonlinear":   ("BART",   "BART_Nonlinear",   "is_bart",  "llm",      "llm"),
+    "bart_linear":      ("BART",   "BART_Linear",      "is_bart",  "llm",      "llm"),
+    "bert_nonlinear":   ("BERT",   "BERT_Nonlinear",   "is_bert",  "llm",      "llm"),
+    "bert_linear":      ("BERT",   "BERT_Linear",      "is_bert",  "llm",      "llm"),
+    "llama_nonlinear":  ("LLAMA",  "Llama_Nonlinear",  "is_llama", "llm",      "llm"),
+    "llama_linear":     ("LLAMA",  "Llama_Linear",     "is_llama", "llm",      "llm"),
+    "informer":         ("Informer", "Model",         None,       "baselines","informer"),
+    "patchtst":         ("PatchTST", "Model",         None,       "baselines","patchtst"),
 }
 
 
@@ -40,8 +53,21 @@ def _load_model_class(model_name: str):
         raise ValueError(
             f"Unknown model '{model_name}'. Available: {list(MODEL_REGISTRY.keys())}"
         )
-    module_filename, class_name, _ = MODEL_REGISTRY[model_name]
-    model_path = os.path.join(project_root, "models", f"{module_filename}.py")
+    module_filename, class_name, _, base_dir, _ = MODEL_REGISTRY[model_name]
+    if base_dir == "baselines":
+        model_root = os.path.join(baselines_root, "models")
+        if baselines_root not in sys.path:
+            sys.path.insert(0, baselines_root)
+        # Ensure baseline "utils" wins over other utils modules
+        existing_utils = sys.modules.get("utils")
+        if existing_utils is not None:
+            utils_file = getattr(existing_utils, "__file__", "")
+            if utils_file and not utils_file.startswith(baselines_root):
+                sys.modules.pop("utils", None)
+                sys.modules.pop("utils.masking", None)
+    else:
+        model_root = os.path.join(project_root, "models")
+    model_path = os.path.join(model_root, f"{module_filename}.py")
 
     spec = importlib.util.spec_from_file_location(module_filename, model_path)
     module = importlib.util.module_from_spec(spec)
@@ -62,6 +88,31 @@ def get_default_configs(
     lora_alpha=16,
     lora_dropout=0.15,
     dropout=0.15,
+    # baseline params
+    label_len=48,
+    enc_in=1,
+    dec_in=1,
+    c_out=1,
+    embed_type=0,
+    embed="timeF",
+    freq="h",
+    factor=1,
+    n_heads=4,
+    e_layers=2,
+    d_layers=1,
+    d_ff=512,
+    distil=True,
+    activation="gelu",
+    output_attention=False,
+    fc_dropout=0.05,
+    head_dropout=0.0,
+    patch_len=16,
+    padding_patch="end",
+    revin=1,
+    affine=0,
+    subtract_last=0,
+    decomposition=0,
+    individual=0,
     use_lora=True  # Enable LoRA by default for federated learning
 ):
     """
@@ -81,25 +132,51 @@ def get_default_configs(
         )
 
     # Determine which backbone flag to enable based on the selected model
-    _, _, backbone_flag = MODEL_REGISTRY[model]
+    _, _, backbone_flag, _, model_family = MODEL_REGISTRY[model]
+    is_llm = model_family == "llm"
 
     return SimpleNamespace(
         model=model,
+        model_family=model_family,
         is_gpt=(backbone_flag == "is_gpt"),
         is_bart=(backbone_flag == "is_bart"),
         is_bert=(backbone_flag == "is_bert"),
         is_llama=(backbone_flag == "is_llama"),
         pretrain=True,
         freeze=True,  # Freeze base LLM, only train adapters + LayerNorm
-        use_lora=use_lora,
+        use_lora=(use_lora if is_llm else False),
         # data/patching
         seq_len=seq_len,
+        label_len=label_len,
         pred_len=pred_len,
         patch_size=patch_size,
         stride=stride,
         d_model=d_model,
         hidden_size=hidden_size,
         kernel_size=kernel_size,
+        enc_in=enc_in,
+        dec_in=dec_in,
+        c_out=c_out,
+        embed_type=embed_type,
+        embed=embed,
+        freq=freq,
+        factor=factor,
+        n_heads=n_heads,
+        e_layers=e_layers,
+        d_layers=d_layers,
+        d_ff=d_ff,
+        distil=distil,
+        activation=activation,
+        output_attention=output_attention,
+        fc_dropout=fc_dropout,
+        head_dropout=head_dropout,
+        patch_len=patch_len,
+        padding_patch=padding_patch,
+        revin=revin,
+        affine=affine,
+        subtract_last=subtract_last,
+        decomposition=decomposition,
+        individual=individual,
         llm_layers=llm_layers,
         lora_r=lora_r,
         lora_alpha=lora_alpha,
@@ -130,10 +207,14 @@ class Net(nn.Module):
         self.configs = configs
 
         model_class = _load_model_class(model_name)
-        self.model = model_class(configs, device)
+        model_family = getattr(configs, "model_family", "llm")
+        if model_family == "llm":
+            self.model = model_class(configs, device)
+        else:
+            self.model = model_class(configs)
         self.to(device)
 
-    def forward(self, x):
+    def forward(self, x, x_mark=None, y=None, y_mark=None):
         """
         x: tensor [B, seq_len, 1]
         GPT4TS expects shape [B, L, M] where M is number of features (here 1).
@@ -141,7 +222,26 @@ class Net(nn.Module):
         """
         # ensure on device and float
         x = x.to(self.device).float()
-        return self.model(x, itr=0)
+        model_family = getattr(self.configs, "model_family", "llm")
+        if model_family == "llm":
+            return self.model(x, itr=0)
+        if model_family == "informer":
+            if x_mark is None or y is None or y_mark is None:
+                raise ValueError("Informer requires x_mark, y, and y_mark inputs.")
+            x_mark = x_mark.to(self.device).float()
+            y = y.to(self.device).float()
+            y_mark = y_mark.to(self.device).float()
+
+            pred_len = self.configs.pred_len
+            label_len = self.configs.label_len
+            dec_inp = torch.zeros_like(y[:, -pred_len:, :]).float()
+            dec_inp = torch.cat([y[:, :label_len, :], dec_inp], dim=1).float().to(self.device)
+
+            outputs = self.model(x, x_mark, dec_inp, y_mark)
+            if getattr(self.configs, "output_attention", False):
+                outputs = outputs[0]
+            return outputs
+        return self.model(x)
 
 
 def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.01, global_weights=None, proximal_mu=None):
@@ -195,16 +295,27 @@ def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.0
         # Training phase
         net.train()
         for batch in trainloader:
+            x_mark = None
+            y_mark = None
             if isinstance(batch, dict):
                 x = batch["x"].to(device).float()
                 y_true = batch["y"].to(device).float()
+                x_mark = batch.get("x_mark", None)
+                y_mark = batch.get("y_mark", None)
             else:
-                x, y_true = batch[:2]
+                if len(batch) >= 4:
+                    x, y_true, x_mark, y_mark = batch[:4]
+                else:
+                    x, y_true = batch[:2]
                 x = x.to(device).float()
                 y_true = y_true.to(device).float()
+                if x_mark is not None:
+                    x_mark = x_mark.to(device).float()
+                if y_mark is not None:
+                    y_mark = y_mark.to(device).float()
 
             optimizer.zero_grad()
-            y_pred = net(x)
+            y_pred = net(x, x_mark=x_mark, y=y_true, y_mark=y_mark)
 
             pred_len = net.configs.pred_len
             if y_true.size(1) > pred_len:
@@ -291,15 +402,26 @@ def test(net, testloader, device, return_predictions=False):
 
     with torch.no_grad():
         for batch in testloader:
+            x_mark = None
+            y_mark = None
             if isinstance(batch, dict):
                 x = batch["x"].to(device).float()
                 y_true = batch["y"].to(device).float()
+                x_mark = batch.get("x_mark", None)
+                y_mark = batch.get("y_mark", None)
             else:
-                x, y_true = batch[:2]
+                if len(batch) >= 4:
+                    x, y_true, x_mark, y_mark = batch[:4]
+                else:
+                    x, y_true = batch[:2]
                 x = x.to(device).float()
                 y_true = y_true.to(device).float()
+                if x_mark is not None:
+                    x_mark = x_mark.to(device).float()
+                if y_mark is not None:
+                    y_mark = y_mark.to(device).float()
 
-            y_pred = net(x)
+            y_pred = net(x, x_mark=x_mark, y=y_true, y_mark=y_mark)
             pred_len = net.configs.pred_len
             if y_true.size(1) > pred_len:
                 y_true = y_true[:, -pred_len:, :]
@@ -342,7 +464,8 @@ def load_client_train(partition_id: int, num_partitions: int, bs: int = 32, cfg:
     root_path = os.path.join(project_root, "datasets", "custom")
     client_datasets = ["nasa_almaty.csv", "nasa_zhezkazgan.csv", "nasa_aktau.csv", "nasa_taraz.csv", "nasa_aktobe.csv"]
     data_path = client_datasets[partition_id]
-    seq_len, label_len, pred_len = cfg.seq_len, 48, cfg.pred_len
+    label_len = getattr(cfg, "label_len", 48)
+    seq_len, pred_len = cfg.seq_len, cfg.pred_len
     target = "WS50M"
 
     full_train = Dataset_Custom(
@@ -373,7 +496,8 @@ def load_client_val(partition_id: int, bs: int = 32, cfg: SimpleNamespace = None
     root_path = os.path.join(project_root, "datasets", "custom")
     client_datasets = ["nasa_almaty.csv", "nasa_zhezkazgan.csv", "nasa_aktau.csv", "nasa_taraz.csv", "nasa_aktobe.csv"]
     data_path = client_datasets[partition_id]
-    seq_len, label_len, pred_len = cfg.seq_len, 48, cfg.pred_len
+    label_len = getattr(cfg, "label_len", 48)
+    seq_len, pred_len = cfg.seq_len, cfg.pred_len
     target = "WS50M"
 
     val_dataset = Dataset_Custom(
@@ -401,7 +525,8 @@ def load_client_test(partition_id: int, bs: int = 32, cfg: SimpleNamespace = Non
     root_path = os.path.join(project_root, "datasets", "custom")
     client_datasets = ["nasa_almaty.csv", "nasa_zhezkazgan.csv", "nasa_aktau.csv", "nasa_taraz.csv", "nasa_aktobe.csv"]
     data_path = client_datasets[partition_id]
-    seq_len, label_len, pred_len = cfg.seq_len, 48, cfg.pred_len
+    label_len = getattr(cfg, "label_len", 48)
+    seq_len, pred_len = cfg.seq_len, cfg.pred_len
     target = "WS50M"
 
     test_dataset = Dataset_Custom(
@@ -429,7 +554,8 @@ def _load_centralized(flag: str, bs: int, cfg: SimpleNamespace, shuffle: bool):
 
     root_path = os.path.join(project_root, "datasets", "custom")
     client_datasets = ["nasa_almaty.csv", "nasa_zhezkazgan.csv", "nasa_aktau.csv", "nasa_taraz.csv", "nasa_aktobe.csv"]
-    seq_len, label_len, pred_len = cfg.seq_len, 48, cfg.pred_len
+    label_len = getattr(cfg, "label_len", 48)
+    seq_len, pred_len = cfg.seq_len, cfg.pred_len
     target = "WS50M"
 
     datasets = []

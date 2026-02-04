@@ -10,12 +10,12 @@ from torch.utils.data import random_split, DataLoader
 import warnings
 from pathlib import Path
 import sys
-sys.path.append('/raid/tin_trungchau/federated_learning/Long-term_Forecasting')
+
+# Ensure local utils/ is imported before any similarly-named packages on PYTHONPATH.
+_project_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_project_root))
 
 from utils.timefeatures import time_features
-
-sys.path.append('/raid/tin_trungchau/federated_learning/Long-term_Forecasting/utils/tools.py')
-
 from utils.tools import convert_tsf_to_dataframe
 
 warnings.filterwarnings('ignore')

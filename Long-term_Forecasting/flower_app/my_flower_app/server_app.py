@@ -252,6 +252,30 @@ def main(grid: Grid, context: Context) -> None:
     lora_alpha: int = context.run_config.get("lora-alpha", 16)
     lora_dropout: float = context.run_config.get("lora-dropout", 0.15)
     dropout: float = context.run_config.get("dropout", 0.15)
+    label_len: int = context.run_config.get("label-len", 48)
+    enc_in: int = context.run_config.get("enc-in", 1)
+    dec_in: int = context.run_config.get("dec-in", 1)
+    c_out: int = context.run_config.get("c-out", 1)
+    embed_type: int = context.run_config.get("embed-type", 0)
+    embed: str = context.run_config.get("embed", "timeF")
+    freq: str = context.run_config.get("freq", "h")
+    factor: int = context.run_config.get("factor", 1)
+    n_heads: int = context.run_config.get("n-heads", 4)
+    e_layers: int = context.run_config.get("e-layers", 2)
+    d_layers: int = context.run_config.get("d-layers", 1)
+    d_ff: int = context.run_config.get("d-ff", 512)
+    distil: bool = context.run_config.get("distil", True)
+    activation: str = context.run_config.get("activation", "gelu")
+    output_attention: bool = context.run_config.get("output-attention", False)
+    fc_dropout: float = context.run_config.get("fc-dropout", 0.05)
+    head_dropout: float = context.run_config.get("head-dropout", 0.0)
+    patch_len: int = context.run_config.get("patch-len", 16)
+    padding_patch: str = context.run_config.get("padding-patch", "end")
+    revin: int = context.run_config.get("revin", 1)
+    affine: int = context.run_config.get("affine", 0)
+    subtract_last: int = context.run_config.get("subtract-last", 0)
+    decomposition: int = context.run_config.get("decomposition", 0)
+    individual: int = context.run_config.get("individual", 0)
 
     # Get experiment directory from environment variable (set by run_flower_experiment.sh)
     import os
@@ -279,6 +303,30 @@ def main(grid: Grid, context: Context) -> None:
         hidden_size=hidden_size,
         kernel_size=kernel_size,
         llm_layers=llm_layers,
+        label_len=label_len,
+        enc_in=enc_in,
+        dec_in=dec_in,
+        c_out=c_out,
+        embed_type=embed_type,
+        embed=embed,
+        freq=freq,
+        factor=factor,
+        n_heads=n_heads,
+        e_layers=e_layers,
+        d_layers=d_layers,
+        d_ff=d_ff,
+        distil=distil,
+        activation=activation,
+        output_attention=output_attention,
+        fc_dropout=fc_dropout,
+        head_dropout=head_dropout,
+        patch_len=patch_len,
+        padding_patch=padding_patch,
+        revin=revin,
+        affine=affine,
+        subtract_last=subtract_last,
+        decomposition=decomposition,
+        individual=individual,
         lora_r=lora_r,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
@@ -325,6 +373,30 @@ def main(grid: Grid, context: Context) -> None:
             "lora_alpha": lora_alpha,
             "lora_dropout": lora_dropout,
             "dropout": dropout,
+            "label_len": label_len,
+            "enc_in": enc_in,
+            "dec_in": dec_in,
+            "c_out": c_out,
+            "embed_type": embed_type,
+            "embed": embed,
+            "freq": freq,
+            "factor": factor,
+            "n_heads": n_heads,
+            "e_layers": e_layers,
+            "d_layers": d_layers,
+            "d_ff": d_ff,
+            "distil": distil,
+            "activation": activation,
+            "output_attention": output_attention,
+            "fc_dropout": fc_dropout,
+            "head_dropout": head_dropout,
+            "patch_len": patch_len,
+            "padding_patch": padding_patch,
+            "revin": revin,
+            "affine": affine,
+            "subtract_last": subtract_last,
+            "decomposition": decomposition,
+            "individual": individual,
             "server_round": r
         }
 

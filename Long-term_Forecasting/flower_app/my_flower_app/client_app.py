@@ -3,6 +3,7 @@
 import torch
 import time
 import os
+import sys
 import pandas as pd
 import numpy as np
 from flwr.app import ArrayRecord, Context, Message, MetricRecord, RecordDict
@@ -12,11 +13,16 @@ from my_flower_app.task import get_default_configs, Net, load_client_train, load
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+_PATH_LOGGED = False
 
 app = ClientApp()
 
 @app.train()
 def train(msg: Message, context: Context):
+    global _PATH_LOGGED
+    if not _PATH_LOGGED:
+        logging.info("[CLIENT PATH] sys.path=%s", sys.path)
+        _PATH_LOGGED = True
     # Get model parameters from train config (passed from server)
     conf = msg.content["config"]
     configs = get_default_configs(
@@ -32,7 +38,31 @@ def train(msg: Message, context: Context):
         lora_r=conf.get("lora_r", 8),
         lora_alpha=conf.get("lora_alpha", 16),
         lora_dropout=conf.get("lora_dropout", 0.15),
-        dropout=conf.get("dropout", 0.15)
+        dropout=conf.get("dropout", 0.15),
+        label_len=conf.get("label_len", 48),
+        enc_in=conf.get("enc_in", 1),
+        dec_in=conf.get("dec_in", 1),
+        c_out=conf.get("c_out", 1),
+        embed_type=conf.get("embed_type", 0),
+        embed=conf.get("embed", "timeF"),
+        freq=conf.get("freq", "h"),
+        factor=conf.get("factor", 1),
+        n_heads=conf.get("n_heads", 4),
+        e_layers=conf.get("e_layers", 2),
+        d_layers=conf.get("d_layers", 1),
+        d_ff=conf.get("d_ff", 512),
+        distil=conf.get("distil", True),
+        activation=conf.get("activation", "gelu"),
+        output_attention=conf.get("output_attention", False),
+        fc_dropout=conf.get("fc_dropout", 0.05),
+        head_dropout=conf.get("head_dropout", 0.0),
+        patch_len=conf.get("patch_len", 16),
+        padding_patch=conf.get("padding_patch", "end"),
+        revin=conf.get("revin", 1),
+        affine=conf.get("affine", 0),
+        subtract_last=conf.get("subtract_last", 0),
+        decomposition=conf.get("decomposition", 0),
+        individual=conf.get("individual", 0)
     )
 
     model = Net(configs=configs)
@@ -122,6 +152,10 @@ def evaluate(msg: Message, context: Context):
     This is called by the server to get federated evaluation metrics.
     Evaluates on both val (20%) and test (10%) splits.
     """
+    global _PATH_LOGGED
+    if not _PATH_LOGGED:
+        logging.info("[CLIENT PATH] sys.path=%s", sys.path)
+        _PATH_LOGGED = True
     # Get model parameters from run_config (for evaluation)
     conf = context.run_config
     configs = get_default_configs(
@@ -137,7 +171,31 @@ def evaluate(msg: Message, context: Context):
         lora_r=conf.get("lora-r", 8),
         lora_alpha=conf.get("lora-alpha", 16),
         lora_dropout=conf.get("lora-dropout", 0.15),
-        dropout=conf.get("dropout", 0.15)
+        dropout=conf.get("dropout", 0.15),
+        label_len=conf.get("label-len", 48),
+        enc_in=conf.get("enc-in", 1),
+        dec_in=conf.get("dec-in", 1),
+        c_out=conf.get("c-out", 1),
+        embed_type=conf.get("embed-type", 0),
+        embed=conf.get("embed", "timeF"),
+        freq=conf.get("freq", "h"),
+        factor=conf.get("factor", 1),
+        n_heads=conf.get("n-heads", 4),
+        e_layers=conf.get("e-layers", 2),
+        d_layers=conf.get("d-layers", 1),
+        d_ff=conf.get("d-ff", 512),
+        distil=conf.get("distil", True),
+        activation=conf.get("activation", "gelu"),
+        output_attention=conf.get("output-attention", False),
+        fc_dropout=conf.get("fc-dropout", 0.05),
+        head_dropout=conf.get("head-dropout", 0.0),
+        patch_len=conf.get("patch-len", 16),
+        padding_patch=conf.get("padding-patch", "end"),
+        revin=conf.get("revin", 1),
+        affine=conf.get("affine", 0),
+        subtract_last=conf.get("subtract-last", 0),
+        decomposition=conf.get("decomposition", 0),
+        individual=conf.get("individual", 0)
     )
 
     model = Net(configs=configs)
