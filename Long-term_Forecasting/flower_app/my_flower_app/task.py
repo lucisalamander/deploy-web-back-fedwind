@@ -412,9 +412,9 @@ def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.0
                 diff = w_global_initial[name].to(device) - p.data
                 new_c_local[name] = (c_local_device[name] - c_global_device[name] + scale * diff).cpu()
 
-    avg_loss = total_loss / max(1, count)
-    logging.info(f"Training completed over {epochs} epochs. Average Loss: {avg_loss:.6f}")
-    return avg_loss, history, new_c_local
+    avg_mse_loss = sum(epoch["train_loss"] for epoch in history) / max(1, len(history))
+    logging.info(f"Training completed over {epochs} epochs. Average MSE: {avg_mse_loss:.6f}")
+    return avg_mse_loss, history, new_c_local
 
 def test(net, testloader, device, return_predictions=False):
     """

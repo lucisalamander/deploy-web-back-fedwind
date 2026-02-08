@@ -35,6 +35,8 @@ fraction-train = 0.5
 local-epochs = 2
 lr = 0.001
 batch-size = 16
+num-clients = 5
+random-seed = 2021
 
 # Strategy and Optimization Parameters
 strategy = "fedavg"

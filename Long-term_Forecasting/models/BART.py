@@ -5,10 +5,11 @@ import torch.nn as nn
 from einops import rearrange
 
 from transformers import AutoModel
+from peft import LoraConfig, get_peft_model, TaskType
 
 # --------- Conv + MLP Patch Embedding ---------
 class ConvMLPPatchEmbedding(nn.Module):
-    def __init__(self, patch_size, d_model, hidden_size=128, kernel_size=3):
+    def __init__(self, patch_size, d_model, hidden_size=128, kernel_size=3, dropout=0.15):
         super().__init__()
         # Conv1d expects input shape [batch, in_channels, sequence_length]
         self.conv1d = nn.Conv1d(
@@ -20,6 +21,7 @@ class ConvMLPPatchEmbedding(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(patch_size, hidden_size),
             nn.ReLU(),
+            nn.Dropout(p=dropout),
             nn.Linear(hidden_size, d_model)
         )
 
@@ -126,23 +128,40 @@ class BART_Nonlinear(nn.Module):
                 force_download=False,
             )
             self.bart.encoder.layers = self.bart.encoder.layers[:configs.llm_layers] 
+            if getattr(configs, "use_lora", False):
+                target_modules = ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"]
+                self.bart = self._apply_lora(
+                    self.bart,
+                    r=getattr(configs, "lora_r", 16),
+                    alpha=getattr(configs, "lora_alpha", 32),
+                    dropout=getattr(configs, "lora_dropout", 0.1),
+                    target_modules=target_modules,
+                )
             print("bart= {}".format(self.bart))
+
+        # Dropout for regularization
+        dropout_rate = getattr(configs, "dropout", 0.15)
 
         # embedding: conv + mlp patch
         self.in_layer = ConvMLPPatchEmbedding(
             patch_size=configs.patch_size,
             d_model=configs.d_model,
             hidden_size=configs.hidden_size,
-            kernel_size=configs.kernel_size
+            kernel_size=configs.kernel_size,
+            dropout=dropout_rate
         )
         # final linear to map all patches to prediction length
         self.out_layer = nn.Linear(configs.d_model * self.patch_num,
                                    configs.pred_len)
 
+        # Additional dropout layers
+        self.dropout_bart = nn.Dropout(p=dropout_rate)
+        self.dropout_pre_out = nn.Dropout(p=dropout_rate)
+
         # freeze Bart if requested
         if configs.freeze and configs.pretrain and configs.is_bart:
             for name, param in self.bart.named_parameters():
-                keep_train = any(k in name for k in [
+                keep_train = ("lora_" in name) or any(k in name for k in [
                     "layernorm_embedding", "self_attn_layer_norm",
                     "encoder.layernorm_embedding", "final_layer_norm",
                     "layer_norm"
@@ -176,9 +195,11 @@ class BART_Nonlinear(nn.Module):
 
         if self.is_bart:
             outputs = self.bart.encoder(inputs_embeds=outputs).last_hidden_state
+            outputs = self.dropout_bart(outputs)
 
         # final prediction
         outputs = outputs.reshape(B * M, -1)
+        outputs = self.dropout_pre_out(outputs)
         outputs = self.out_layer(outputs)
         outputs = rearrange(outputs, '(b m) l -> b l m', b=B)
 
@@ -186,3 +207,21 @@ class BART_Nonlinear(nn.Module):
         outputs = outputs * stdev
         outputs = outputs + means
         return outputs
+
+    def _apply_lora(self, model, r=16, alpha=32, dropout=0.1, target_modules=None):
+        if target_modules is None:
+            target_modules = ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"]
+        lora_cfg = LoraConfig(
+            r=r,
+            lora_alpha=alpha,
+            lora_dropout=dropout,
+            target_modules=target_modules,
+            bias="none",
+            # task_type=TaskType.FEATURE_EXTRACTION,
+        )
+        model = get_peft_model(model, lora_cfg)
+        try:
+            model.print_trainable_parameters()
+        except Exception:
+            pass
+        return model

@@ -1052,6 +1052,7 @@ run_flower() {
         echo "  lr: $LEARNING_RATE"
         echo "  batch-size: $BATCH_SIZE"
         echo "  num-clients: $NUM_CLIENTS"
+        echo "  random-seed: 2021"
         echo ""
         echo "Strategy & Optimization Parameters:"
         echo "  strategy: $STRATEGY"

@@ -326,6 +326,9 @@ def build_experiment_row(exp_dir: str) -> Dict[str, Any]:
     # ── Parse config.txt ─────────────────────────────────────────────────
     config = _parse_config_txt(str(exp_path / "config.txt"))
 
+    # A2. SEED
+    row["seed"] = config.get("random-seed", config.get("random_seed", None))
+
     # B. PRIMARY AXES
     row["model"] = config.get("model", None)
     row["fl_algorithm"] = config.get("strategy", None)
@@ -468,6 +471,12 @@ def build_experiment_row(exp_dir: str) -> Dict[str, Any]:
         row["total_training_time_min"] = _safe_float(timing.get("total_training_time_min"))
 
         # Extract num_trainable_params and model_size if saved
+        if row.get("seed") is None:
+            row["seed"] = timing.get("random_seed", timing.get("random-seed"))
+        if "num_trainable_params" in timing:
+            row["num_trainable_params"] = timing.get("num_trainable_params")
+        if "num_total_params" in timing:
+            row["num_total_params"] = timing.get("num_total_params")
         if "model_size_mb" in timing:
             row["model_payload_mb"] = _safe_float(timing["model_size_mb"])
 

@@ -44,7 +44,7 @@ def get_model_size_mb(arrays: ArrayRecord) -> float:
 class FedAvgWithMetrics(FedAvg):
     """Custom FedAvg that tracks client training and evaluation metrics."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, personalize=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.client_train_losses = []
         self.client_train_durations = []
@@ -66,8 +66,11 @@ class FedAvgWithMetrics(FedAvg):
         self.max_drift = None
 
         # FedBN/FedLN/FedPer personalization
+        self.personalize = personalize
         self.personalized_params = {}  # node_id -> state_dict
-        self.personalization_keys = ['ln', 'wpe', 'out_layer']  # LayerNorm, Positional Embeddings, and Projection Head
+        self.personalization_keys = (
+            ['ln', 'wpe', 'out_layer'] if personalize else []
+        )  # LayerNorm, Positional Embeddings, and Projection Head
 
     def aggregate_fit(self, grid, config, messages):
         """Override to collect training metrics and compute client drift."""
@@ -138,6 +141,19 @@ class FedAvgWithMetrics(FedAvg):
                 state.update(self.personalized_params[node_id])
                 msg.content["arrays"] = ArrayRecord(state)
                 logging.info(f"FedLN: Restored {len(self.personalized_params[node_id])} personalized layers for node {node_id}")
+        return messages
+
+    def configure_evaluate(self, grid, config, arrays):
+        """Override to pass server_round to clients during evaluation."""
+        messages = super().configure_evaluate(grid, config, arrays)
+        server_round = config.get("server_round", -1)
+        for msg in messages:
+            if "config" not in msg.content:
+                msg.content["config"] = ConfigRecord({})
+            if hasattr(msg.content["config"], "data"):
+                msg.content["config"].data["server_round"] = server_round
+            else:
+                msg.content["config"]["server_round"] = server_round
         return messages
 
     def _compute_drift(self, messages):
@@ -465,12 +481,23 @@ def main(grid: Grid, context: Context) -> None:
     logging.info("Server initialized - no server-side datasets. All training and testing happens on clients.")
 
     # Select strategy based on configuration
+    personalize = strategy_name in ("fedln", "fedper")
     if strategy_name == "fedprox":
-        strategy = FedProxWithMetrics(fraction_train=fraction_train, proximal_mu=proximal_mu)
+        strategy = FedProxWithMetrics(
+            fraction_train=fraction_train,
+            proximal_mu=proximal_mu,
+            personalize=personalize,
+        )
     elif strategy_name == "scaffold":
-        strategy = ScaffoldWithMetrics(fraction_train=fraction_train)
+        strategy = ScaffoldWithMetrics(
+            fraction_train=fraction_train,
+            personalize=personalize,
+        )
     else:
-        strategy = FedAvgWithMetrics(fraction_train=fraction_train)
+        strategy = FedAvgWithMetrics(
+            fraction_train=fraction_train,
+            personalize=personalize,
+        )
 
     best = {"round": 0, "loss": float("inf"), "arrays": None}
     logging.info("Starting federated training...")
@@ -737,6 +764,7 @@ def main(grid: Grid, context: Context) -> None:
     logging.info(f"Saved training summary to: {training_summary_path}")
 
     num_trainable_params = sum(p.numel() for p in global_model.parameters() if p.requires_grad)
+    num_total_params = sum(p.numel() for p in global_model.parameters())
 
     timing_summary = {
         "model_name": model,
@@ -746,6 +774,7 @@ def main(grid: Grid, context: Context) -> None:
         "local_epochs": context.run_config.get("local-epochs", 1),
         "num_clients": context.run_config.get("num-clients", 5),
         "num_trainable_params": num_trainable_params,
+        "num_total_params": num_total_params,
         "lora_r": lora_r,
         "lora_alpha": lora_alpha,
         "patch_size": patch_size,
