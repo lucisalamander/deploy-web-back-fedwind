@@ -454,14 +454,13 @@ for ii in range(args.itr):
     # total_params = sum(p.numel() for p in model.parameters())
     # trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    params = model.parameters()
-
+    trainable_params_list = [p for p in model.parameters() if p.requires_grad]
+    trainable_params = sum(p.numel() for p in trainable_params_list)
     if params_total_M is None:
         params_total_M = total_params / 1e6
         params_trainable_M = trainable_params / 1e6
         params_trainable_pct = 100.0 * trainable_params / total_params
-    model_optim = torch.optim.Adam(params, lr=args.learning_rate)
+    model_optim = torch.optim.Adam(trainable_params_list, lr=args.learning_rate)
 
     early_stopping = EarlyStopping(patience=args.patience, verbose=True)
     if args.loss_func == 'mse':

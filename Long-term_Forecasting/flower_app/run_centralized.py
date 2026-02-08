@@ -170,7 +170,7 @@ def compute_lr(base_lr, current_round, warmup_rounds):
     if current_round <= warmup_rounds:
         return base_lr * (current_round / warmup_rounds)
     decay_round = current_round - warmup_rounds
-    return base_lr * (0.9**decay_round)
+    return base_lr * (0.98**decay_round)
 
 
 # ---------------------------------------------------------------------------
@@ -393,9 +393,23 @@ def main():
     pd.DataFrame(results).to_csv(os.path.join(exp_dir, "training_summary.csv"), index=False)
 
     num_completed = len(results)
+    num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
     pd.DataFrame(
         [
             {
+                "model_name": cfg["model"],
+                "fl_algorithm": "centralized",
+                "pred_len": cfg["pred_len"],
+                "learning_rate": cfg["lr"],
+                "local_epochs": cfg["local_epochs"],
+                "num_clients": NUM_CITIES,
+                "num_trainable_params": num_trainable_params,
+                "lora_r": cfg["lora_r"],
+                "lora_alpha": cfg["lora_alpha"],
+                "patch_size": cfg["patch_size"],
+                "stride": cfg["stride"],
+                "random_seed": 2021,
                 "total_training_time_sec": total_time,
                 "total_training_time_min": total_time / 60,
                 "num_rounds": num_completed,

@@ -155,6 +155,65 @@ def analyze_single_experiment(exp_folder: str) -> Optional[Dict]:
                 if 'max_client_train_duration_sec' in df_train.columns:
                     result['max_client_train_duration_sec'] = float(df_train['max_client_train_duration_sec'].max())
 
+                if 'avg_client_drift' in df_train.columns:
+                    result['avg_client_drift'] = float(df_train['avg_client_drift'].mean())
+
+                if 'max_client_drift' in df_train.columns:
+                    result['max_client_drift'] = float(df_train['max_client_drift'].max())
+
+                # --- Communication Efficiency ---
+                num_clients = result.get('num_clients', result.get('fl_num-clients', 5))
+                fraction_train = result.get('fl_fraction-train', 1.0)
+                clients_per_round = max(1, int(num_clients * fraction_train))
+
+                if 'payload_sent_mb' in df_train.columns and 'payload_received_mb' in df_train.columns:
+                    # comm = (sum_sent + sum_recv) * clients_per_round
+                    round_comm_mb = (df_train['payload_sent_mb'] + df_train['payload_received_mb']) * clients_per_round
+                    result['total_comm_mb'] = float(round_comm_mb.sum())
+                    
+                    # rounds_to_target (MAE < 0.5 default)
+                    target_mae = 0.5
+                    reached_target = df_train[df_train['val_mae'] < target_mae]
+                    if not reached_target.empty:
+                        first_round = int(reached_target.iloc[0]['round'])
+                        result['rounds_to_target'] = first_round
+                        # comm_to_target = cumulative comm up to that round
+                        result['comm_to_target'] = float(round_comm_mb.iloc[:first_round].sum())
+                    else:
+                        result['rounds_to_target'] = None
+                        result['comm_to_target'] = None
+                elif 'payload_sent_mb' in df_train.columns:
+                    # Fallback to user formula if received is missing
+                    total_sent = df_train['payload_sent_mb'].sum()
+                    result['total_comm_mb'] = float(total_sent * clients_per_round * 2)
+
+                # --- Fairness Metrics Calculation ---
+                best_round_num = result.get('best_round')
+                metrics_dir = exp_path / "metrics"
+                if best_round_num is not None and metrics_dir.exists():
+                    client_maes = []
+                    for client_file in metrics_dir.glob("client*_eval_metrics.csv"):
+                        try:
+                            df_client = pd.read_csv(client_file)
+                            # Get the MAE for the best round
+                            best_client_row = df_client[df_client['round'] == best_round_num]
+                            if not best_client_row.empty:
+                                # Use test_mae if available, else val_mae
+                                mae = best_client_row.iloc[0].get('test_mae', best_client_row.iloc[0].get('val_mae'))
+                                if pd.notna(mae):
+                                    client_maes.append(float(mae))
+                        except Exception as ce:
+                            print(f"Warning: Error parsing client metrics {client_file}: {ce}")
+
+                    if client_maes:
+                        result['client_mae_std'] = float(np.std(client_maes))
+                        result['worst_client_mae'] = float(np.max(client_maes))
+                        result['best_client_mae'] = float(np.min(client_maes))
+                        if result['best_client_mae'] > 0:
+                            result['fairness_ratio'] = result['worst_client_mae'] / result['best_client_mae']
+                        else:
+                            result['fairness_ratio'] = None
+
         except Exception as e:
             print(f"Warning: Error parsing training summary for {exp_folder}: {e}")
 
@@ -211,6 +270,9 @@ def create_summary_table(experiments: List[Dict]) -> pd.DataFrame:
     # Best metrics
     best_cols = ['best_round', 'best_val_loss', 'best_val_mae', 'best_val_rmse']
 
+    # Fairness metrics
+    fairness_cols = ['client_mae_std', 'worst_client_mae', 'best_client_mae', 'fairness_ratio']
+
     # Final metrics
     final_cols = ['final_round', 'final_val_loss', 'final_val_mae', 'final_val_rmse',
                   'final_train_loss']
@@ -221,15 +283,19 @@ def create_summary_table(experiments: List[Dict]) -> pd.DataFrame:
     # Time metrics
     time_cols = ['total_training_time_sec', 'total_training_time_min',
                  'avg_round_duration_sec', 'avg_validation_duration_sec',
-                 'avg_client_train_duration_sec', 'max_client_train_duration_sec']
+                 'avg_client_train_duration_sec', 'max_client_train_duration_sec',
+                 'avg_client_drift', 'max_client_drift']
+
+    # Communication and Convergence metrics
+    comm_cols = ['total_comm_mb', 'rounds_to_target', 'comm_to_target']
 
     # Other columns
     other_cols = [col for col in df.columns if col not in
-                  id_cols + fl_cols + model_cols + best_cols + final_cols + avg_cols + time_cols]
+                  id_cols + fl_cols + model_cols + best_cols + fairness_cols + final_cols + avg_cols + time_cols + comm_cols]
 
     # Combine in desired order
     ordered_cols = []
-    for col_group in [id_cols, fl_cols, model_cols, best_cols, final_cols, avg_cols, time_cols, other_cols]:
+    for col_group in [id_cols, fl_cols, model_cols, best_cols, fairness_cols, final_cols, avg_cols, time_cols, comm_cols, other_cols]:
         for col in col_group:
             if col in df.columns:
                 ordered_cols.append(col)
@@ -263,7 +329,7 @@ def print_summary_stats(df: pd.DataFrame):
         print("="*80)
         top_5 = df.nsmallest(5, 'best_val_loss')
         display_cols = ['experiment_name', 'best_round', 'best_val_loss', 'best_val_mae',
-                       'best_val_rmse', 'total_training_time_min']
+                       'total_comm_mb', 'rounds_to_target', 'total_training_time_min']
         display_cols = [c for c in display_cols if c in df.columns]
 
         print(top_5[display_cols].to_string(index=False))

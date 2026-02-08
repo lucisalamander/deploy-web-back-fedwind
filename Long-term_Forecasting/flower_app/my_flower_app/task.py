@@ -244,7 +244,7 @@ class Net(nn.Module):
         return self.model(x)
 
 
-def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.01, global_weights=None, proximal_mu=None):
+def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.01, global_weights=None, proximal_mu=None, c_local=None, c_global=None):
     """
     Train loop expects `net` to be an instance of Net (wrapper above).
     trainloader yields dicts {"x": [B, seq_len, 1], "y": [B, pred_len, 1]}
@@ -260,18 +260,26 @@ def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.0
         weight_decay: L2 regularization coefficient for AdamW optimizer (default: 0.01)
         global_weights: global model weights for FedProx proximal term (optional)
         proximal_mu: FedProx proximal term coefficient (optional, e.g., 0.01)
-
-    Returns:
-        avg_loss: average training loss over all epochs
-        history: list of dictionaries containing per-epoch metrics
+        c_local: local control variate for SCAFFOLD
+        c_global: global control variate for SCAFFOLD
     """
     net.to(device)
-    optimizer = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=weight_decay)
+    trainable_params = [p for p in net.parameters() if p.requires_grad]
+    optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
     criterion = nn.MSELoss()
     total_loss = 0.0
     count = 0
     history = []
 
+    # SCAFFOLD setup
+    use_scaffold = (c_local is not None and c_global is not None)
+    if use_scaffold:
+        logging.info("SCAFFOLD enabled")
+        c_local_device = {k: v.to(device) for k, v in c_local.items()}
+        c_global_device = {k: v.to(device) for k, v in c_global.items()}
+        # Store initial weights to compute c_i update: c_i+ = c_i - c + 1/(K*eta)(x - y_i)
+        w_global_initial = {k: p.clone().detach() for k, p in net.named_parameters() if p.requires_grad}
+    
     # Check if FedProx is enabled
     use_fedprox = (proximal_mu is not None and global_weights is not None and proximal_mu > 0)
     if use_fedprox:
@@ -285,6 +293,8 @@ def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.0
         logging.info(f"FedProx: Moved {len(global_weights_device)} global weight tensors to {device}")
     else:
         global_weights_device = None
+
+    total_steps = epochs * len(trainloader)
 
     for epoch in range(epochs):
         epoch_mse_loss = 0.0  # Track MSE separately
@@ -337,6 +347,14 @@ def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.0
                 epoch_prox_loss += proximal_term.item()
 
             total_batch_loss.backward()
+
+            # SCAFFOLD: Correct gradient before step
+            if use_scaffold:
+                for name, p in net.named_parameters():
+                    if p.grad is not None and name in c_local_device and name in c_global_device:
+                        # Correction: grad = grad - c_i + c
+                        p.grad.data.add_(c_global_device[name] - c_local_device[name])
+
             optimizer.step()
 
             # CRITICAL FIX: Track MSE and total loss separately
@@ -382,9 +400,21 @@ def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.0
 
         history.append(metrics)
 
+    new_c_local = None
+    if use_scaffold:
+        # c_i_new = c_i - c_global + (1/(K*η)) * (w_global - w_local)
+        new_c_local = {}
+        # η = lr (using base lr as η for SCAFFOLD update is standard if η is fixed)
+        scale = 1.0 / (total_steps * lr) if total_steps * lr > 0 else 0.0
+
+        for name, p in net.named_parameters():
+            if p.requires_grad:
+                diff = w_global_initial[name].to(device) - p.data
+                new_c_local[name] = (c_local_device[name] - c_global_device[name] + scale * diff).cpu()
+
     avg_loss = total_loss / max(1, count)
     logging.info(f"Training completed over {epochs} epochs. Average Loss: {avg_loss:.6f}")
-    return avg_loss, history
+    return avg_loss, history, new_c_local
 
 def test(net, testloader, device, return_predictions=False):
     """

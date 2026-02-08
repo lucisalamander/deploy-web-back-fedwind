@@ -58,7 +58,7 @@ BATCH_SIZE=32
 NUM_CLIENTS=5
 
 # Strategy and Optimization Parameters
-STRATEGY="fedavg"           # fedavg or fedprox
+STRATEGY="fedavg"           # fedavg, fedprox, or scaffold
 PROXIMAL_MU=0.01            # FedProx proximal term coefficient (only used if STRATEGY=fedprox)
 WARMUP_ROUNDS=3             # Number of rounds for learning rate warmup
 WEIGHT_DECAY=0.01           # L2 regularization coefficient for AdamW optimizer
@@ -941,7 +941,7 @@ display_config() {
     echo -e "  ${CYAN}Number of Rounds:${NC}        $NUM_ROUNDS"
     echo -e "  ${CYAN}Fraction Train:${NC}          $FRACTION_TRAIN"
     echo -e "  ${CYAN}Local Epochs:${NC}            $LOCAL_EPOCHS"
-    echo -e "  ${CYAN}Learning Rate:${NC}           $LEARNING_RATE (decays by 0.9 per round)"
+    echo -e "  ${CYAN}Learning Rate:${NC}           $LEARNING_RATE (decays by 0.98 per round)"
     echo -e "  ${CYAN}Batch Size:${NC}              $BATCH_SIZE"
     echo -e "  ${CYAN}Number of Clients:${NC}       $NUM_CLIENTS"
 
@@ -979,7 +979,7 @@ display_config() {
     echo -e "\n${YELLOW}Experiment Details:${NC}"
     TOTAL_LOCAL_UPDATES=$((NUM_ROUNDS * LOCAL_EPOCHS))
     CLIENTS_PER_ROUND=$(echo "scale=0; $NUM_CLIENTS * $FRACTION_TRAIN / 1" | bc)
-    FINAL_LR=$(python3 -c "print(f'{$LEARNING_RATE * (0.9 ** ($NUM_ROUNDS - 1)):.8f}')")
+    FINAL_LR=$(python3 -c "print(f'{$LEARNING_RATE * (0.98 ** ($NUM_ROUNDS - 1)):.8f}')")
     echo -e "  ${CYAN}Total Local Updates:${NC}     $TOTAL_LOCAL_UPDATES (across all rounds)"
     echo -e "  ${CYAN}Clients Per Round:${NC}       ~$CLIENTS_PER_ROUND"
     echo -e "  ${CYAN}Final Learning Rate:${NC}     $FINAL_LR (after $NUM_ROUNDS rounds of decay)"
@@ -1015,7 +1015,7 @@ run_flower() {
     print_info "Changed to directory: $FLOWER_APP_DIR"
 
     # Build Flower command (string values must be quoted for TOML format)
-    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE pred-len=$PRED_LEN label-len=$LABEL_LEN strategy=\"$STRATEGY\" proximal-mu=$PROXIMAL_MU warmup-rounds=$WARMUP_ROUNDS weight-decay=$WEIGHT_DECAY early-stopping=$EARLY_STOPPING early-stop-patience=$EARLY_STOP_PATIENCE seq-len=$SEQ_LEN patch-size=$PATCH_SIZE stride=$STRIDE d-model=$D_MODEL hidden-size=$HIDDEN_SIZE kernel-size=$KERNEL_SIZE llm-layers=$LLM_LAYERS enc-in=$ENC_IN dec-in=$DEC_IN c-out=$C_OUT embed-type=$EMBED_TYPE embed=\"$EMBED\" freq=\"$FREQ\" factor=$FACTOR n-heads=$N_HEADS e-layers=$E_LAYERS d-layers=$D_LAYERS d-ff=$D_FF distil=$DISTIL activation=\"$ACTIVATION\" output-attention=$OUTPUT_ATTENTION fc-dropout=$FC_DROPOUT head-dropout=$HEAD_DROPOUT patch-len=$PATCH_LEN padding-patch=\"$PADDING_PATCH\" revin=$REVIN affine=$AFFINE subtract-last=$SUBTRACT_LAST decomposition=$DECOMPOSITION individual=$INDIVIDUAL lora-r=$LORA_R lora-alpha=$LORA_ALPHA lora-dropout=$LORA_DROPOUT dropout=$DROPOUT model=\"$MODEL\""
+    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE pred-len=$PRED_LEN label-len=$LABEL_LEN strategy=\"$STRATEGY\" proximal-mu=$PROXIMAL_MU warmup-rounds=$WARMUP_ROUNDS weight-decay=$WEIGHT_DECAY early-stopping=$EARLY_STOPPING early-stop-patience=$EARLY_STOP_PATIENCE seq-len=$SEQ_LEN patch-size=$PATCH_SIZE stride=$STRIDE d-model=$D_MODEL hidden-size=$HIDDEN_SIZE kernel-size=$KERNEL_SIZE llm-layers=$LLM_LAYERS enc-in=$ENC_IN dec-in=$DEC_IN c-out=$C_OUT embed-type=$EMBED_TYPE embed=\"$EMBED\" freq=\"$FREQ\" factor=$FACTOR n-heads=$N_HEADS e-layers=$E_LAYERS d-layers=$D_LAYERS d-ff=$D_FF distil=$DISTIL activation=\"$ACTIVATION\" output-attention=$OUTPUT_ATTENTION fc-dropout=$FC_DROPOUT head-dropout=$HEAD_DROPOUT patch-len=$PATCH_LEN padding-patch=\"$PADDING_PATCH\" revin=$REVIN affine=$AFFINE subtract-last=$SUBTRACT_LAST decomposition=$DECOMPOSITION individual=$INDIVIDUAL lora-r=$LORA_R lora-alpha=$LORA_ALPHA lora-dropout=$LORA_DROPOUT dropout=$DROPOUT model=\"$MODEL\" num-clients=$NUM_CLIENTS random-seed=2021"
 
     # Get the appropriate federation name based on client count
     FEDERATION_NAME=$(get_federation_name)

@@ -101,7 +101,7 @@ def train(msg: Message, context: Context):
     else:
         # After warmup: apply exponential decay
         decay_round = current_round - warmup_rounds
-        lr = base_lr * (0.9 ** decay_round)  # decay 10% per round after warmup
+        lr = base_lr * (0.98 ** decay_round)  # decay 2% per round after warmup
         logging.info(f"[CLIENT {pid}] Decay phase: LR={lr:.6f} (round {current_round}, decay_round={decay_round})")
 
     # Get weight decay parameter for regularization
@@ -116,8 +116,18 @@ def train(msg: Message, context: Context):
         global_weights = {name: param.clone().detach() for name, param in model.named_parameters()}
         logging.info(f"[CLIENT {pid}] FedProx enabled with proximal_mu={proximal_mu}")
 
+    # SCAFFOLD: Get control variates
+    c_local = None
+    c_global = None
+    if "c_local" in msg.content:
+        c_local = msg.content["c_local"].to_torch_state_dict()
+        logging.info(f"[CLIENT {pid}] SCAFFOLD: Received local control variate")
+    if "c_global" in msg.content:
+        c_global = msg.content["c_global"].to_torch_state_dict()
+        logging.info(f"[CLIENT {pid}] SCAFFOLD: Received global control variate")
+
     train_start_time = time.time()
-    train_loss, history = train_fn(
+    train_loss, history, new_c_local = train_fn(
         model,
         trainloader,
         context.run_config["local-epochs"],
@@ -127,6 +137,8 @@ def train(msg: Message, context: Context):
         weight_decay=weight_decay,
         global_weights=global_weights,
         proximal_mu=proximal_mu,
+        c_local=c_local,
+        c_global=c_global,
     )
     train_duration = time.time() - train_start_time
 
@@ -141,7 +153,13 @@ def train(msg: Message, context: Context):
         "train_duration_sec": float(train_duration),
         "num-examples": len(trainloader.dataset),
     })
-    content = RecordDict({"arrays": arrays, "metrics": metrics})
+    
+    content_dict = {"arrays": arrays, "metrics": metrics}
+    if new_c_local is not None:
+        content_dict["c_local"] = ArrayRecord(new_c_local)
+        logging.info(f"[CLIENT {pid}] SCAFFOLD: Returning updated local control variate")
+
+    content = RecordDict(content_dict)
     return Message(content=content, reply_to=msg)
 
 

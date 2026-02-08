@@ -60,8 +60,18 @@ class FedAvgWithMetrics(FedAvg):
         self.train_history = defaultdict(list)
         self.eval_history = defaultdict(list)
 
+        # Drift tracking
+        self.current_global_arrays = None
+        self.avg_drift = None
+        self.max_drift = None
+
+        # FedBN/FedLN/FedPer personalization
+        self.personalized_params = {}  # node_id -> state_dict
+        self.personalization_keys = ['ln', 'wpe', 'out_layer']  # LayerNorm, Positional Embeddings, and Projection Head
+
     def aggregate_fit(self, grid, config, messages):
-        """Override to collect training metrics from clients."""
+        """Override to collect training metrics and compute client drift."""
+        self.avg_drift, self.max_drift = self._compute_drift(messages)
         self.client_train_losses = []
         self.client_train_durations = []
 
@@ -104,9 +114,62 @@ class FedAvgWithMetrics(FedAvg):
             else:
                 logging.warning(f"[DEBUG] No 'metrics' key found in message content")
 
+            # --- FedBN/FedLN: Extract personalized parameters ---
+            node_id = msg.src_node_id
+            if "arrays" in msg.content:
+                state = msg.content["arrays"].to_torch_state_dict()
+                pers_dict = {k: v for k, v in state.items() if any(pk in k for pk in self.personalization_keys)}
+                if pers_dict:
+                    self.personalized_params[node_id] = pers_dict
+                    logging.info(f"FedLN: Saved {len(pers_dict)} personalized layers for node {node_id}")
+
         logging.info(f"[DEBUG] Collected {len(self.client_train_losses)} train losses and {len(self.client_train_durations)} durations")
 
         return super().aggregate_fit(grid, config, messages)
+
+    def configure_fit(self, grid, config, arrays):
+        """Override to restore personalized parameters to specific clients."""
+        messages = super().configure_fit(grid, config, arrays)
+        for msg in messages:
+            node_id = msg.dst_node_id
+            if node_id in self.personalized_params:
+                state = msg.content["arrays"].to_torch_state_dict()
+                # Overwrite shared weights with client's personalized versions
+                state.update(self.personalized_params[node_id])
+                msg.content["arrays"] = ArrayRecord(state)
+                logging.info(f"FedLN: Restored {len(self.personalized_params[node_id])} personalized layers for node {node_id}")
+        return messages
+
+    def _compute_drift(self, messages):
+        """Compute average and maximum L2 drift of client updates from global model."""
+        if self.current_global_arrays is None or not messages:
+            return None, None
+
+        try:
+            # Convert global state to float once for efficiency
+            global_state = {k: v.float() for k, v in self.current_global_arrays.to_torch_state_dict().items()}
+            drift_norms = []
+
+            for msg in messages:
+                if not msg.has_content() or "arrays" not in msg.content:
+                    continue
+
+                client_state = msg.content["arrays"].to_torch_state_dict()
+                drift_sq = 0.0
+                for k, v in client_state.items():
+                    # Exclude personalized layers from drift calculation
+                    if k in global_state and not any(pk in k for pk in self.personalization_keys):
+                        diff = v.float() - global_state[k]
+                        drift_sq += torch.sum(diff * diff).item()
+                drift_norms.append(drift_sq ** 0.5)
+
+            if not drift_norms:
+                return None, None
+
+            return sum(drift_norms) / len(drift_norms), max(drift_norms)
+        except Exception as e:
+            logging.warning(f"Error computing client drift: {e}")
+            return None, None
 
     def aggregate_evaluate(self, grid, messages):
         """Override to collect evaluation metrics from clients."""
@@ -186,7 +249,7 @@ class FedAvgWithMetrics(FedAvg):
         return super().aggregate_evaluate(grid, messages)
 
 
-class FedProxWithMetrics(FedAvg):
+class FedProxWithMetrics(FedAvgWithMetrics):
     """Custom FedProx that tracks client training and evaluation metrics.
 
     FedProx adds a proximal term on the client side: loss + (mu/2) * ||w - w_global||^2
@@ -206,148 +269,81 @@ class FedProxWithMetrics(FedAvg):
         super().__init__(*args, **kwargs)
         self.proximal_mu = proximal_mu  # Proximal term coefficient
 
-        # Per-round metrics (flat lists - indexed by message order)
-        # Note: Flower 1.x+ Message API doesn't easily expose client IDs in aggregate methods
-        # For client-specific tracking, use the metrics CSV files saved by clients
-        self.client_train_losses = []
-        self.client_train_durations = []
-        self.client_val_losses = []
-        self.client_val_maes = []
-        self.client_val_rmses = []
-        self.client_val_durations = []
-        self.client_test_losses = []
-        self.client_test_maes = []
-        self.client_test_rmses = []
-        self.client_test_durations = []
 
-        # Optional: Per-client history (if we can extract client IDs)
-        self.train_history = defaultdict(list)
-        self.eval_history = defaultdict(list)
+class ScaffoldWithMetrics(FedAvgWithMetrics):
+    """SCAFFOLD strategy with metrics tracking and control variate management."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.c_global = None  # ArrayRecord
+        self.c_locals = {}    # Dict[int, ArrayRecord]
+
+    def configure_fit(self, grid, config, arrays):
+        """Inject global and local control variates into fit messages."""
+        # 1. Get default messages from base FedAvg
+        messages = super().configure_fit(grid, config, arrays)
+
+        # 2. Initialize c_global if it's the first round
+        if self.c_global is None:
+            # Initialize c_global with zeros (same structure as arrays)
+            state_dict = arrays.to_torch_state_dict()
+            # Exclude personalized layers from SCAFFOLD variates
+            c_global_dict = {
+                k: torch.zeros_like(v) 
+                for k, v in state_dict.items() 
+                if v.dtype != torch.int64 and not any(pk in k for pk in self.personalization_keys)
+            }
+            self.c_global = ArrayRecord(c_global_dict)
+            logging.info(f"SCAFFOLD: Initialized c_global with zeros (excluding {len(state_dict)-len(c_global_dict)} personalized layers)")
+
+        # 3. Add control variates to each message
+        for msg in messages:
+            node_id = msg.dst_node_id
+            msg.content["c_global"] = self.c_global
+            
+            if node_id not in self.c_locals:
+                # Initialize c_local for this node with zeros
+                c_local_dict = {k: torch.zeros_like(v) for k, v in self.c_global.to_torch_state_dict().items()}
+                self.c_locals[node_id] = ArrayRecord(c_local_dict)
+                logging.info(f"SCAFFOLD: Initialized c_local for node {node_id}")
+            
+            msg.content["c_local"] = self.c_locals[node_id]
+
+        return messages
 
     def aggregate_fit(self, grid, config, messages):
-        """Override to collect training metrics from clients."""
-        self.client_train_losses = []
-        self.client_train_durations = []
+        """Update local and global control variates based on client replies."""
+        new_c_locals = {}
+        for msg in messages:
+            node_id = msg.src_node_id
+            if "c_local" in msg.content:
+                new_c_locals[node_id] = msg.content["c_local"].to_torch_state_dict()
+                self.c_locals[node_id] = msg.content["c_local"]
 
-        logging.info(f"[DEBUG] aggregate_fit called with {len(messages)} messages")
-        server_round = config.get("server_round", -1)
-
-        for idx, msg in enumerate(messages):
-            if not msg.has_content():
-                logging.warning("[DEBUG] Message has no content, skipping")
-                continue
-
-            logging.info(f"[DEBUG] Message content keys: {msg.content.keys()}")
-            if "metrics" in msg.content:
-                metrics = msg.content["metrics"]
-                if hasattr(metrics, 'data'):
-                    metrics_dict = metrics.data
-                else:
-                    metrics_dict = metrics
-
-                logging.info(f"[DEBUG] Metrics dict: {metrics_dict}")
-
-                # Extract metrics
-                train_loss = metrics_dict.get("train_loss")
-                train_duration = metrics_dict.get("train_duration_sec")
-
-                if train_loss is not None:
-                    self.client_train_losses.append(float(train_loss))
-                if train_duration is not None:
-                    self.client_train_durations.append(float(train_duration))
-
-                # Try to get client_id (if available in metrics)
-                client_id = metrics_dict.get("client_id", f"client_{idx}")
-
-                # Store in per-client history
-                self.train_history[client_id].append({
-                    "round": server_round,
-                    "train_loss": float(train_loss) if train_loss is not None else None,
-                    "train_duration_sec": float(train_duration) if train_duration is not None else None,
-                })
-            else:
-                logging.warning(f"[DEBUG] No 'metrics' key found in message content")
-
-        logging.info(f"[DEBUG] Collected {len(self.client_train_losses)} train losses and {len(self.client_train_durations)} durations")
+        # Update c_global = mean(c_locals) if we have new updates
+        if new_c_locals:
+            # Standard SCAFFOLD: c = mean(all c_locals)
+            first_id = next(iter(self.c_locals))
+            param_names = self.c_locals[first_id].to_torch_state_dict().keys()
+            
+            new_c_global_dict = {}
+            num_clients = len(self.c_locals)
+            for name in param_names:
+                sum_c = None
+                for n_id, c_rec in self.c_locals.items():
+                    c_dict = c_rec.to_torch_state_dict()
+                    if name in c_dict:
+                        if sum_c is None:
+                            sum_c = c_dict[name].clone()
+                        else:
+                            sum_c += c_dict[name]
+                if sum_c is not None:
+                    new_c_global_dict[name] = sum_c / num_clients
+            
+            self.c_global = ArrayRecord(new_c_global_dict)
+            logging.info(f"SCAFFOLD: Updated c_global from {len(new_c_locals)} client updates (total clients: {num_clients})")
 
         return super().aggregate_fit(grid, config, messages)
-
-    def aggregate_evaluate(self, grid, messages):
-        """Override to collect evaluation metrics from clients."""
-        self.client_val_losses = []
-        self.client_val_maes = []
-        self.client_val_rmses = []
-        self.client_val_durations = []
-        self.client_test_losses = []
-        self.client_test_maes = []
-        self.client_test_rmses = []
-        self.client_test_durations = []
-
-        logging.info(f"[DEBUG] aggregate_evaluate called with {len(messages)} messages")
-        # Try to get server round from grid context if available
-        server_round = getattr(grid, 'server_round', -1)
-
-        for idx, msg in enumerate(messages):
-            if not msg.has_content():
-                logging.warning("[DEBUG] Message has no content in aggregate_evaluate, skipping")
-                continue
-            if "metrics" in msg.content:
-                metrics = msg.content["metrics"]
-                if hasattr(metrics, 'data'):
-                    metrics_dict = metrics.data
-                else:
-                    metrics_dict = metrics
-
-                logging.info(f"[DEBUG] Eval Metrics dict: {metrics_dict}")
-
-                # Validation metrics
-                val_loss = metrics_dict.get("val_loss")
-                val_mae = metrics_dict.get("val_mae")
-                val_rmse = metrics_dict.get("val_rmse")
-                val_duration = metrics_dict.get("val_duration_sec")
-
-                if val_loss is not None:
-                    self.client_val_losses.append(float(val_loss))
-                if val_mae is not None:
-                    self.client_val_maes.append(float(val_mae))
-                if val_rmse is not None:
-                    self.client_val_rmses.append(float(val_rmse))
-                if val_duration is not None:
-                    self.client_val_durations.append(float(val_duration))
-
-                # Test metrics
-                test_loss = metrics_dict.get("test_loss")
-                test_mae = metrics_dict.get("test_mae")
-                test_rmse = metrics_dict.get("test_rmse")
-                test_duration = metrics_dict.get("test_duration_sec")
-
-                if test_loss is not None:
-                    self.client_test_losses.append(float(test_loss))
-                if test_mae is not None:
-                    self.client_test_maes.append(float(test_mae))
-                if test_rmse is not None:
-                    self.client_test_rmses.append(float(test_rmse))
-                if test_duration is not None:
-                    self.client_test_durations.append(float(test_duration))
-
-                # Try to get client_id (if available in metrics)
-                client_id = metrics_dict.get("client_id", f"client_{idx}")
-
-                # Store in per-client history
-                self.eval_history[client_id].append({
-                    "round": server_round,
-                    "val_loss": float(val_loss) if val_loss is not None else None,
-                    "val_mae": float(val_mae) if val_mae is not None else None,
-                    "val_rmse": float(val_rmse) if val_rmse is not None else None,
-                    "val_duration_sec": float(val_duration) if val_duration is not None else None,
-                    "test_loss": float(test_loss) if test_loss is not None else None,
-                    "test_mae": float(test_mae) if test_mae is not None else None,
-                    "test_rmse": float(test_rmse) if test_rmse is not None else None,
-                    "test_duration_sec": float(test_duration) if test_duration is not None else None,
-                })
-
-        logging.info(f"[DEBUG] Collected {len(self.client_val_losses)} val losses, {len(self.client_test_losses)} test losses")
-        return super().aggregate_evaluate(grid, messages)
 
 @app.main()
 def main(grid: Grid, context: Context) -> None:
@@ -357,7 +353,7 @@ def main(grid: Grid, context: Context) -> None:
     bs:             int   = context.run_config.get("batch-size", 32)
     pred_len:       int   = context.run_config.get("pred-len", 120)  # Default to 120 if not specified
 
-    # Strategy selection: 'fedavg' or 'fedprox'
+    # Strategy selection: 'fedavg', 'fedprox', or 'scaffold'
     strategy_name:  str   = context.run_config.get("strategy", "fedavg").lower()
     proximal_mu:    float = context.run_config.get("proximal-mu", 0.01)
 
@@ -471,6 +467,8 @@ def main(grid: Grid, context: Context) -> None:
     # Select strategy based on configuration
     if strategy_name == "fedprox":
         strategy = FedProxWithMetrics(fraction_train=fraction_train, proximal_mu=proximal_mu)
+    elif strategy_name == "scaffold":
+        strategy = ScaffoldWithMetrics(fraction_train=fraction_train)
     else:
         strategy = FedAvgWithMetrics(fraction_train=fraction_train)
 
@@ -532,6 +530,9 @@ def main(grid: Grid, context: Context) -> None:
         if strategy_name == "fedprox":
             train_cfg["proximal_mu"] = proximal_mu
             logging.info(f"[ROUND {r}] Sending proximal_mu={proximal_mu} to clients for FedProx")
+
+        # Pass current global weights to strategy for drift calculation
+        strategy.current_global_arrays = arrays
 
         result = strategy.start(
             grid=grid,
@@ -647,6 +648,10 @@ def main(grid: Grid, context: Context) -> None:
             avg_client_test_duration = None
             max_client_test_duration = None
 
+        # Extract drift metrics from strategy (computed in aggregate_fit)
+        avg_drift = getattr(strategy, "avg_drift", None)
+        max_drift = getattr(strategy, "max_drift", None)
+
         round_duration = time.time() - round_start_time
 
         # Format metrics for logging
@@ -659,6 +664,8 @@ def main(grid: Grid, context: Context) -> None:
 
         logging.info(f"[Round {r}] Aggregated client val metrics: loss={val_loss_str}, MAE={val_mae_str}, RMSE={val_rmse_str}")
         logging.info(f"[Round {r}] Aggregated client test metrics: loss={test_loss_str}, MAE={test_mae_str}, RMSE={test_rmse_str}")
+        if avg_drift is not None:
+             logging.info(f"[Round {r}] Client drift: avg={avg_drift:.6f}, max={max_drift:.6f}")
         logging.info(f"[Round {r}] Round time: {round_duration:.2f}s")
 
         results.append({
@@ -680,6 +687,8 @@ def main(grid: Grid, context: Context) -> None:
             "max_client_val_duration_sec": float(max_client_val_duration) if max_client_val_duration is not None else None,
             "avg_client_test_duration_sec": float(avg_client_test_duration) if avg_client_test_duration is not None else None,
             "max_client_test_duration_sec": float(max_client_test_duration) if max_client_test_duration is not None else None,
+            "avg_client_drift": float(avg_drift) if avg_drift is not None else None,
+            "max_client_drift": float(max_drift) if max_drift is not None else None,
         })
 
 
@@ -727,7 +736,21 @@ def main(grid: Grid, context: Context) -> None:
     df.to_csv(training_summary_path, index=False)
     logging.info(f"Saved training summary to: {training_summary_path}")
 
+    num_trainable_params = sum(p.numel() for p in global_model.parameters() if p.requires_grad)
+
     timing_summary = {
+        "model_name": model,
+        "fl_algorithm": strategy_name,
+        "pred_len": pred_len,
+        "learning_rate": lr,
+        "local_epochs": context.run_config.get("local-epochs", 1),
+        "num_clients": context.run_config.get("num-clients", 5),
+        "num_trainable_params": num_trainable_params,
+        "lora_r": lora_r,
+        "lora_alpha": lora_alpha,
+        "patch_size": patch_size,
+        "stride": stride,
+        "random_seed": context.run_config.get("random-seed", 2021),
         "total_training_time_sec": total_training_time,
         "total_training_time_min": total_training_time / 60,
         "num_rounds": total_rounds,
@@ -741,3 +764,18 @@ def main(grid: Grid, context: Context) -> None:
     timing_summary_path = os.path.join(exp_dir, "timing_summary.csv")
     timing_df.to_csv(timing_summary_path, index=False)
     logging.info(f"Saved timing summary to: {timing_summary_path}")
+
+    # Update master experiment log — one row per experiment
+    try:
+        # master_experiment_log.py moved to flower_app/ (parent of my_flower_app/)
+        import master_experiment_log
+        row = master_experiment_log.build_experiment_row(exp_dir)
+        # Save master log in the parent directory of experiment folders
+        master_log_path = os.path.join(os.path.dirname(exp_dir), "master_experiment_log.csv")
+        master_experiment_log.append_to_master_log(row, master_csv=master_log_path)
+    except Exception as e:
+        logging.warning(f"Failed to update master experiment log: {e}")
+
+
+if __name__ == "__main__":
+    main()
