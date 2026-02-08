@@ -72,16 +72,15 @@ class FedAvgWithMetrics(FedAvg):
             ['ln', 'wpe', 'out_layer'] if personalize else []
         )  # LayerNorm, Positional Embeddings, and Projection Head
 
-    def aggregate_fit(self, grid, config, messages):
+    def aggregate_train(self, server_round, replies):
         """Override to collect training metrics and compute client drift."""
-        self.avg_drift, self.max_drift = self._compute_drift(messages)
+        self.avg_drift, self.max_drift = self._compute_drift(replies)
         self.client_train_losses = []
         self.client_train_durations = []
 
-        logging.info(f"[DEBUG] aggregate_fit called with {len(messages)} messages")
-        server_round = config.get("server_round", -1)
+        logging.info(f"[DEBUG] aggregate_train called with {len(replies)} messages")
 
-        for idx, msg in enumerate(messages):
+        for idx, msg in enumerate(replies):
             if not msg.has_content():
                 logging.warning("[DEBUG] Message has no content, skipping")
                 continue
@@ -128,11 +127,11 @@ class FedAvgWithMetrics(FedAvg):
 
         logging.info(f"[DEBUG] Collected {len(self.client_train_losses)} train losses and {len(self.client_train_durations)} durations")
 
-        return super().aggregate_fit(grid, config, messages)
+        return super().aggregate_train(server_round, replies)
 
-    def configure_fit(self, grid, config, arrays):
+    def configure_train(self, server_round, arrays, config, grid):
         """Override to restore personalized parameters to specific clients."""
-        messages = super().configure_fit(grid, config, arrays)
+        messages = super().configure_train(server_round, arrays, config, grid)
         for msg in messages:
             node_id = msg.dst_node_id
             if node_id in self.personalized_params:
@@ -143,10 +142,9 @@ class FedAvgWithMetrics(FedAvg):
                 logging.info(f"FedLN: Restored {len(self.personalized_params[node_id])} personalized layers for node {node_id}")
         return messages
 
-    def configure_evaluate(self, grid, config, arrays):
+    def configure_evaluate(self, server_round, arrays, config, grid):
         """Override to pass server_round to clients during evaluation."""
-        messages = super().configure_evaluate(grid, config, arrays)
-        server_round = config.get("server_round", -1)
+        messages = super().configure_evaluate(server_round, arrays, config, grid)
         for msg in messages:
             if "config" not in msg.content:
                 msg.content["config"] = ConfigRecord({})
@@ -187,7 +185,7 @@ class FedAvgWithMetrics(FedAvg):
             logging.warning(f"Error computing client drift: {e}")
             return None, None
 
-    def aggregate_evaluate(self, grid, messages):
+    def aggregate_evaluate(self, server_round, replies):
         """Override to collect evaluation metrics from clients."""
         self.client_val_losses = []
         self.client_val_maes = []
@@ -198,11 +196,9 @@ class FedAvgWithMetrics(FedAvg):
         self.client_test_rmses = []
         self.client_test_durations = []
 
-        logging.info(f"[DEBUG] aggregate_evaluate called with {len(messages)} messages")
-        # Try to get server round from grid context if available
-        server_round = getattr(grid, 'server_round', -1)
+        logging.info(f"[DEBUG] aggregate_evaluate called with {len(replies)} messages")
 
-        for idx, msg in enumerate(messages):
+        for idx, msg in enumerate(replies):
             if not msg.has_content():
                 logging.warning("[DEBUG] Message has no content in aggregate_evaluate, skipping")
                 continue
@@ -262,7 +258,7 @@ class FedAvgWithMetrics(FedAvg):
                 })
 
         logging.info(f"[DEBUG] Collected {len(self.client_val_losses)} val losses, {len(self.client_test_losses)} test losses")
-        return super().aggregate_evaluate(grid, messages)
+        return super().aggregate_evaluate(server_round, replies)
 
 
 class FedProxWithMetrics(FedAvgWithMetrics):
@@ -294,10 +290,10 @@ class ScaffoldWithMetrics(FedAvgWithMetrics):
         self.c_global = None  # ArrayRecord
         self.c_locals = {}    # Dict[int, ArrayRecord]
 
-    def configure_fit(self, grid, config, arrays):
+    def configure_train(self, server_round, arrays, config, grid):
         """Inject global and local control variates into fit messages."""
         # 1. Get default messages from base FedAvg
-        messages = super().configure_fit(grid, config, arrays)
+        messages = super().configure_train(server_round, arrays, config, grid)
 
         # 2. Initialize c_global if it's the first round
         if self.c_global is None:
@@ -327,10 +323,10 @@ class ScaffoldWithMetrics(FedAvgWithMetrics):
 
         return messages
 
-    def aggregate_fit(self, grid, config, messages):
+    def aggregate_train(self, server_round, replies):
         """Update local and global control variates based on client replies."""
         new_c_locals = {}
-        for msg in messages:
+        for msg in replies:
             node_id = msg.src_node_id
             if "c_local" in msg.content:
                 new_c_locals[node_id] = msg.content["c_local"].to_torch_state_dict()
@@ -359,7 +355,7 @@ class ScaffoldWithMetrics(FedAvgWithMetrics):
             self.c_global = ArrayRecord(new_c_global_dict)
             logging.info(f"SCAFFOLD: Updated c_global from {len(new_c_locals)} client updates (total clients: {num_clients})")
 
-        return super().aggregate_fit(grid, config, messages)
+        return super().aggregate_train(server_round, replies)
 
 @app.main()
 def main(grid: Grid, context: Context) -> None:
