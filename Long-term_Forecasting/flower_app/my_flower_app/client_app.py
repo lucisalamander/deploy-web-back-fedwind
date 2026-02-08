@@ -228,9 +228,18 @@ def evaluate(msg: Message, context: Context):
 
     pid = context.node_config["partition-id"]
     bs = context.run_config.get("batch-size", 32)
-    current_round = msg.content.get("config", {}).get(
-        "server_round", context.run_config.get("server_round", 1)
+    config_record = msg.content.get("config", None)
+    logging.info(
+        "[CLIENT %s] Eval config type=%s, value=%s, has_data=%s",
+        pid,
+        type(config_record),
+        config_record,
+        hasattr(config_record, "data"),
     )
+    if config_record is not None and hasattr(config_record, "data"):
+        current_round = config_record.data.get("server_round", 1)
+    else:
+        current_round = 1
 
     # Get experiment directory from environment variable
     exp_dir = os.environ.get("FLOWER_EXP_DIR", ".")

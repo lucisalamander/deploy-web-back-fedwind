@@ -59,6 +59,8 @@ class FedAvgWithMetrics(FedAvg):
         # Optional: Per-client history (if we can extract client IDs)
         self.train_history = defaultdict(list)
         self.eval_history = defaultdict(list)
+        # Set by outer training loop to expose the real round to eval configs.
+        self.outer_round = 1
 
         # Drift tracking
         self.current_global_arrays = None
@@ -149,9 +151,9 @@ class FedAvgWithMetrics(FedAvg):
             if "config" not in msg.content:
                 msg.content["config"] = ConfigRecord({})
             if hasattr(msg.content["config"], "data"):
-                msg.content["config"].data["server_round"] = server_round
+                msg.content["config"].data["server_round"] = self.outer_round
             else:
-                msg.content["config"]["server_round"] = server_round
+                msg.content["config"]["server_round"] = self.outer_round
         return messages
 
     def _compute_drift(self, messages):
@@ -556,6 +558,9 @@ def main(grid: Grid, context: Context) -> None:
 
         # Pass current global weights to strategy for drift calculation
         strategy.current_global_arrays = arrays
+
+        # Provide outer loop round to strategy (Flower's server_round resets per start()).
+        strategy.outer_round = r
 
         result = strategy.start(
             grid=grid,
