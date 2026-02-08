@@ -457,9 +457,9 @@ def test(net, testloader, device, return_predictions=False):
                 y_true = y_true[:, -pred_len:, :]
             loss = criterion(y_pred, y_true)
 
-            if count < 5:  # print only first 5 batches to avoid spam
-                logging.info(f"[TEST] y_pred: {y_pred[0].detach().cpu().numpy().flatten()}")
-                logging.info(f"[TEST] y_true: {y_true[0].detach().cpu().numpy().flatten()}")
+            # if count < 5:  # print only first 5 batches to avoid spam
+            #     logging.info(f"[TEST] y_pred: {y_pred[0].detach().cpu().numpy().flatten()}")
+            #     logging.info(f"[TEST] y_true: {y_true[0].detach().cpu().numpy().flatten()}")
 
             total_loss += loss.item()
             count += 1

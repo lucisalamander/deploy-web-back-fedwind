@@ -117,7 +117,7 @@ class FedAvgWithMetrics(FedAvg):
                 logging.warning(f"[DEBUG] No 'metrics' key found in message content")
 
             # --- FedBN/FedLN: Extract personalized parameters ---
-            node_id = msg.src_node_id
+            node_id = msg.metadata.src_node_id
             if "arrays" in msg.content:
                 state = msg.content["arrays"].to_torch_state_dict()
                 pers_dict = {k: v for k, v in state.items() if any(pk in k for pk in self.personalization_keys)}
@@ -133,7 +133,7 @@ class FedAvgWithMetrics(FedAvg):
         """Override to restore personalized parameters to specific clients."""
         messages = super().configure_train(server_round, arrays, config, grid)
         for msg in messages:
-            node_id = msg.dst_node_id
+            node_id = msg.metadata.dst_node_id
             if node_id in self.personalized_params:
                 state = msg.content["arrays"].to_torch_state_dict()
                 # Overwrite shared weights with client's personalized versions
