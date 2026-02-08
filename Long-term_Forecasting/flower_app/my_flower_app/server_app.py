@@ -41,6 +41,31 @@ def get_model_size_mb(arrays: ArrayRecord) -> float:
     return size_mb
 
 
+def _personalization_keys_for_model(model_name: str):
+    """Return per-backbone personalization keys used for FedLN/FedPer."""
+    name = (model_name or "").lower()
+    if name.startswith("gpt4ts"):
+        return ["ln", "wpe", "out_layer"]
+    if name.startswith("bart"):
+        # Match BART LayerNorms and final projection head.
+        return [
+            "layernorm_embedding",
+            "self_attn_layer_norm",
+            "encoder.layernorm_embedding",
+            "final_layer_norm",
+            "layer_norm",
+            "out_layer",
+        ]
+    if name.startswith("llama"):
+        # LLaMA uses 'norm' naming; keep output head local.
+        return ["norm", "out_layer"]
+    if name.startswith("bert"):
+        # BERT uses LayerNorm naming variants.
+        return ["LayerNorm", "layer_norm", "out_layer"]
+    # Fallback for unknown models.
+    return ["ln", "wpe", "out_layer"]
+
+
 class FedAvgWithMetrics(FedAvg):
     """Custom FedAvg that tracks client training and evaluation metrics."""
 
@@ -495,6 +520,14 @@ def main(grid: Grid, context: Context) -> None:
         strategy = FedAvgWithMetrics(
             fraction_train=fraction_train,
             personalize=personalize,
+        )
+
+    if personalize:
+        strategy.personalization_keys = _personalization_keys_for_model(model)
+        logging.info(
+            "Personalization keys for model '%s': %s",
+            model,
+            strategy.personalization_keys,
         )
 
     best = {"round": 0, "loss": float("inf"), "arrays": None}

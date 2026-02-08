@@ -236,8 +236,12 @@ def evaluate(msg: Message, context: Context):
         config_record,
         hasattr(config_record, "data"),
     )
-    if config_record is not None and hasattr(config_record, "data"):
-        current_round = config_record.data.get("server_round", 1)
+    if config_record is not None:
+        if hasattr(config_record, "data"):
+            current_round = config_record.data.get("server_round", 1)
+        else:
+            # Some ConfigRecord instances behave like dicts without .data
+            current_round = config_record.get("server_round", 1)
     else:
         current_round = 1
 
