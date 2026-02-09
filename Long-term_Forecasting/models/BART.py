@@ -60,7 +60,7 @@ class BART_Linear(nn.Module):
                 resume_download=False,
             )
             self.bart.encoder.layers = self.bart.encoder.layers[:configs.llm_layers]
-            print("bart= {}".format(self.bart))
+            # print("bart= {}".format(self.bart))
 
         self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
         self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)
@@ -137,7 +137,7 @@ class BART_Nonlinear(nn.Module):
                     dropout=getattr(configs, "lora_dropout", 0.1),
                     target_modules=target_modules,
                 )
-            print("bart= {}".format(self.bart))
+            # print("bart= {}".format(self.bart))
 
         # Dropout for regularization
         dropout_rate = getattr(configs, "dropout", 0.15)

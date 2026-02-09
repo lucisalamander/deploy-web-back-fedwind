@@ -57,7 +57,7 @@ class BERT_Linear(nn.Module):
                 use_safetensors=True,
             )
             self.bert.encoder.layer = self.bert.encoder.layer[:configs.llm_layers]
-            print("bert= {}".format(self.bert))
+            # print("bert= {}".format(self.bert))
 
         self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
         self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)
@@ -135,7 +135,7 @@ class BERT_Nonlinear(nn.Module):
                 # bias="none",
                 # task_type=TaskType.SEQ_CLS,
             )
-            print("bert= {}".format(self.bert))
+            # print("bert= {}".format(self.bert))
 
         # embedding: conv + mlp patch
         self.in_layer = ConvMLPPatchEmbedding(

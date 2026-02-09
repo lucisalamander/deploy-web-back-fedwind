@@ -23,7 +23,7 @@ declare -a NUM_CLIENTS=(5)
 # ============================================================================
 declare -a STRATEGY=(fedavg)
 declare -a PROXIMAL_MU=(0.01)
-declare -a WARMUP_ROUNDS=(3)
+declare -a WARMUP_ROUNDS=(1)
 declare -a WEIGHT_DECAY=(0.01)
 declare -a EARLY_STOPPING=(true)
 declare -a EARLY_STOP_PATIENCE=(5)
@@ -31,7 +31,7 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 # MODEL ARCHITECTURE PARAMETERS
 # ============================================================================
-declare -a MODEL=(gpt4ts_nonlinear)
+declare -a MODEL=(llama_nonlinear bart_nonlinear bert_nonlinear)
 declare -a SEQ_LEN=(336)
 declare -a PRED_LEN=(72)
 declare -a LABEL_LEN=(48)
