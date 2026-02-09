@@ -639,14 +639,15 @@ def leaderboard(
     df: pd.DataFrame,
     group_by: List[str] = None,
     metric: str = "best_test_mae",
+    top_k: int = 1,
 ) -> pd.DataFrame:
     """
     Create a leaderboard grouped by (model × algorithm × pred_len).
-    Shows the best experiment per group.
+    Shows the top-k best experiments per group.
 
     Usage:
-        leaderboard(df)  # Default: group by model × algorithm × pred_len
-        leaderboard(df, group_by=["model", "pred_len"])  # Group by model × horizon only
+        leaderboard(df)  # Default: group by model × algorithm × pred_len, top-1 per group
+        leaderboard(df, group_by=["model", "pred_len"], top_k=5)  # Top-5 per group
     """
     if group_by is None:
         group_by = ["model", "fl_algorithm", "pred_len"]
@@ -655,11 +656,14 @@ def leaderboard(
     if not valid_groups:
         return df
 
-    # For each group, keep the row with the best metric
-    idx = df.groupby(valid_groups)[metric].idxmin()
-    best_df = df.loc[idx.dropna()].copy()
+    # For each group, keep the top-k rows with the best metric
+    best_df = df.loc[df.groupby(valid_groups)[metric].apply(
+        lambda x: x.nsmallest(top_k).index
+    ).explode().values].copy()
 
-    display_cols = valid_groups + [
+    display_cols = [
+        "experiment_id",
+    ] + valid_groups + [
         metric,
         "best_val_mae", "best_test_mae",
         "learning_rate", "local_epochs",
@@ -700,8 +704,8 @@ Examples:
                         help="Output CSV path (default: master_experiment_log.csv)")
     parser.add_argument("--schema", action="store_true",
                         help="Print schema documentation and exit")
-    parser.add_argument("--leaderboard", action="store_true",
-                        help="Print leaderboard from existing master log")
+    parser.add_argument("--leaderboard", nargs="?", const=1, type=int, default=None,
+                        help="Print leaderboard from existing master log (optionally specify top-k per group, e.g., --leaderboard 5)")
 
     args = parser.parse_args()
 
@@ -717,16 +721,17 @@ Examples:
         print("=" * 100)
         return
 
-    if args.leaderboard:
+    if args.leaderboard is not None:
         df = load_master_log(args.output)
         if df.empty:
             print("No master log found. Run --scan-dir first.")
             return
-        print("\n" + "=" * 100)
-        print("LEADERBOARD")
-        print("=" * 100)
-        lb = leaderboard(df)
-        print(lb.to_string(index=False))
+        print("\n" + "=" * 180)
+        print(f"LEADERBOARD (Top {args.leaderboard} per group)")
+        print("=" * 180)
+        lb = leaderboard(df, top_k=args.leaderboard)
+        with pd.option_context('display.max_columns', None, 'display.width', None, 'display.max_colwidth', None):
+            print(lb.to_string(index=False))
         return
 
     if args.exp_dir:
