@@ -337,7 +337,7 @@ class ScaffoldWithMetrics(FedAvgWithMetrics):
 
         # 3. Add control variates to each message
         for msg in messages:
-            node_id = msg.dst_node_id
+            node_id = msg.metadata.dst_node_id
             msg.content["c_global"] = self.c_global
             
             if node_id not in self.c_locals:
@@ -354,7 +354,7 @@ class ScaffoldWithMetrics(FedAvgWithMetrics):
         """Update local and global control variates based on client replies."""
         new_c_locals = {}
         for msg in replies:
-            node_id = msg.src_node_id
+            node_id = msg.metadata.src_node_id
             if "c_local" in msg.content:
                 new_c_locals[node_id] = msg.content["c_local"].to_torch_state_dict()
                 self.c_locals[node_id] = msg.content["c_local"]
