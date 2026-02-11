@@ -13,7 +13,7 @@ declare -a NUM_CLIENTS=(5)
 # ============================================================================
 # STRATEGY & OPTIMIZATION PARAMETERS
 # ============================================================================
-declare -a STRATEGY=(fedper fedprox scaffold fedln)
+declare -a STRATEGY=(scaffold fedln)
 declare -a PROXIMAL_MU=(0.01 0.001)
 declare -a WARMUP_ROUNDS=(1)
 declare -a WEIGHT_DECAY=(0.01)

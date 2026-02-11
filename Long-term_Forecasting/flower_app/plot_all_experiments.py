@@ -250,7 +250,7 @@ def plot_aggregated_losses(experiment_dir, output_dir, config_text, timing_text)
     ax2.axhline(y=0, color='black', linestyle='-', linewidth=1)
     ax2.set_xlabel('Round', fontsize=12, fontweight='bold')
     ax2.set_ylabel('Val Loss - Train Loss', fontsize=12, fontweight='bold')
-    ax2.set_title('Overfitting Gap (Positive = Overfitting)', fontsize=14, fontweight='bold')
+    ax2.set_title('Generalization Gap (Val − Train)', fontsize=14, fontweight='bold')
     ax2.grid(True, alpha=0.3, linestyle='--', axis='y')
     ax2.set_xticks(summary_df['round'])
     for bar in bars:
@@ -412,9 +412,9 @@ def main():
         return
 
     for experiment_dir in experiment_dirs:
-        if (experiment_dir / "plots").exists():
-            print(f"Skipping {experiment_dir} (plots folder already exists)")
-            continue
+        # if (experiment_dir / "plots").exists():
+        #     print(f"Skipping {experiment_dir} (plots folder already exists)")
+        #     continue
         run_for_experiment(experiment_dir)
 
 if __name__ == "__main__":
