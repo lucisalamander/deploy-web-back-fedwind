@@ -13,7 +13,7 @@ declare -a NUM_CLIENTS=(5)
 # ============================================================================
 # STRATEGY & OPTIMIZATION PARAMETERS
 # ============================================================================
-declare -a STRATEGY=(scaffold fedprox fedper)
+declare -a STRATEGY=(fedln fedprox fedper)
 declare -a PROXIMAL_MU=(0.001)
 declare -a WARMUP_ROUNDS=(1)
 declare -a WEIGHT_DECAY=(0.01)
@@ -23,7 +23,7 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 # MODEL ARCHITECTURE PARAMETERS
 # ============================================================================
-declare -a MODEL=(llama_nonlinear)
+declare -a MODEL=(bart_nonlinear)
 declare -a SEQ_LEN=(336)
 declare -a PRED_LEN=(72)
 declare -a LABEL_LEN=(48)

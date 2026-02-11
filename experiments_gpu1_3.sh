@@ -13,7 +13,7 @@ declare -a NUM_CLIENTS=(5)
 # ============================================================================
 # STRATEGY & OPTIMIZATION PARAMETERS
 # ============================================================================
-declare -a STRATEGY=(scaffold fedln)
+declare -a STRATEGY=(fedavg)
 declare -a PROXIMAL_MU=(0.01 0.001)
 declare -a WARMUP_ROUNDS=(1)
 declare -a WEIGHT_DECAY=(0.01)
@@ -25,7 +25,7 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 declare -a MODEL=(bert_nonlinear)
 declare -a SEQ_LEN=(336)
-declare -a PRED_LEN=(72)
+declare -a PRED_LEN=(1 432)
 declare -a LABEL_LEN=(48)
 declare -a PATCH_SIZE=(16)
 declare -a STRIDE=(16)
