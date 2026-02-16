@@ -324,7 +324,7 @@ def main():
 
         # Train for local_epochs epochs — one round = one FL round
         train_start = time.time()
-        train_loss, _ = train_fn(
+        train_loss, _, _ = train_fn(
             model,
             trainloader,
             epochs=cfg["local_epochs"],
