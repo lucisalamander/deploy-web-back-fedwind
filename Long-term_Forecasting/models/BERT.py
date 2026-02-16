@@ -151,7 +151,7 @@ class BERT_Nonlinear(nn.Module):
         # freeze Bert if requested
         if configs.freeze and configs.pretrain and configs.is_bert:
             for name, param in self.bert.named_parameters():
-                if ("lora_" in name) or ("LayerNorm" in name) or ("embeddings" in name):
+                if ("lora_" in name) or ("LayerNorm" in name):
                     param.requires_grad = True
                 else:
                     param.requires_grad = False

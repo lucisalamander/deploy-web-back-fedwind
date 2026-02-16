@@ -1,10 +1,13 @@
 
 """my-flower-app: A Flower / PyTorch app."""
 import copy
+import json
+import pickle
 import torch
 import pandas as pd
 import time
 import sys
+import numpy as np
 from datetime import datetime
 from collections import defaultdict
 from flwr.app import ArrayRecord, ConfigRecord, Context, MetricRecord
@@ -288,6 +291,142 @@ class FedAvgWithMetrics(FedAvg):
         return super().aggregate_evaluate(server_round, replies)
 
 
+class StatAvgWithMetrics(FedAvgWithMetrics):
+    """StatAvg over FedAvgWithMetrics.
+
+    Round 1: aggregate client local statistics into global statistics.
+    Round 2: broadcast aggregated global stats through train config.
+    Round 2+: optionally collect client scalers if provided.
+
+    If clients do not provide StatAvg payloads, this strategy behaves like FedAvg.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.stats_global = None
+        self.client_scalers = None
+
+    @staticmethod
+    def _metrics_to_dict(metrics_obj):
+        if metrics_obj is None:
+            return {}
+        if hasattr(metrics_obj, "data"):
+            return metrics_obj.data
+        return metrics_obj
+
+    @staticmethod
+    def _extract_local_stats(metrics_dict):
+        """Extract local stats from metrics payload.
+
+        Supported forms:
+        - {"statavg_stats": "{\"mean\": [...], \"var\": [...]}", ...}
+        - {"statavg_stats": {"mean": [...], "var": [...]}, ...}
+        - {"{\"mean\": [...], \"var\": [...]}": 0, ...}  # legacy baseline form
+        """
+        stats = metrics_dict.get("statavg_stats")
+        if isinstance(stats, str):
+            try:
+                return json.loads(stats)
+            except Exception:
+                return None
+        if isinstance(stats, dict):
+            return stats
+
+        # Legacy baseline payload: json-string as key
+        for key in metrics_dict.keys():
+            if isinstance(key, str) and "\"mean\"" in key and "\"var\"" in key:
+                try:
+                    return json.loads(key)
+                except Exception:
+                    continue
+        return None
+
+    @staticmethod
+    def _extract_scaler(metrics_dict):
+        scaler_blob = metrics_dict.get("scaler")
+        if scaler_blob is None:
+            return None
+        if isinstance(scaler_blob, str):
+            try:
+                scaler_blob = scaler_blob.encode("latin1")
+            except Exception:
+                return None
+        if isinstance(scaler_blob, (bytes, bytearray)):
+            try:
+                return pickle.loads(bytes(scaler_blob))
+            except Exception:
+                return None
+        return None
+
+    def aggregate_train(self, server_round, replies):
+        if server_round == 1:
+            local_means = []
+            local_vars = []
+            local_counts = []
+
+            for msg in replies:
+                if not msg.has_content() or "metrics" not in msg.content:
+                    continue
+                metrics_dict = self._metrics_to_dict(msg.content["metrics"])
+                stats = self._extract_local_stats(metrics_dict)
+                if not stats or "mean" not in stats or "var" not in stats:
+                    continue
+                n = metrics_dict.get("num-examples")
+                if n is None:
+                    continue
+
+                local_means.append(np.array(stats["mean"]))
+                local_vars.append(np.array(stats["var"]))
+                local_counts.append(float(n))
+
+            if local_counts:
+                total = sum(local_counts)
+                mean_global = sum(m * n for m, n in zip(local_means, local_counts)) / total
+                var_global = sum(
+                    n * v + n * (m - mean_global) ** 2
+                    for v, m, n in zip(local_vars, local_means, local_counts)
+                ) / total
+
+                self.stats_global = {
+                    "mean_global": mean_global.tolist() if isinstance(mean_global, np.ndarray) else mean_global,
+                    "var_global": var_global.tolist() if isinstance(var_global, np.ndarray) else var_global,
+                }
+                logging.info("StatAvg: aggregated global statistics from %d clients", len(local_counts))
+            else:
+                logging.info("StatAvg: no local statistics received in round 1; continuing as FedAvg")
+
+        if server_round == 2:
+            scalers = []
+            for msg in replies:
+                if not msg.has_content() or "metrics" not in msg.content:
+                    continue
+                metrics_dict = self._metrics_to_dict(msg.content["metrics"])
+                scaler = self._extract_scaler(metrics_dict)
+                if scaler is not None:
+                    scalers.append(scaler)
+            if scalers:
+                self.client_scalers = scalers
+                logging.info("StatAvg: collected %d client scalers", len(scalers))
+
+        return super().aggregate_train(server_round, replies)
+
+    def configure_train(self, server_round, arrays, config, grid):
+        messages = super().configure_train(server_round, arrays, config, grid)
+        if server_round == 2 and self.stats_global is not None:
+            for msg in messages:
+                if "config" not in msg.content:
+                    msg.content["config"] = ConfigRecord({})
+                cfg = msg.content["config"]
+                if hasattr(cfg, "data"):
+                    cfg.data["mean_global"] = self.stats_global["mean_global"]
+                    cfg.data["var_global"] = self.stats_global["var_global"]
+                else:
+                    cfg["mean_global"] = self.stats_global["mean_global"]
+                    cfg["var_global"] = self.stats_global["var_global"]
+            logging.info("StatAvg: broadcasted global statistics in round 2")
+        return messages
+
+
 class FedProxWithMetrics(FedAvgWithMetrics):
     """Custom FedProx that tracks client training and evaluation metrics.
 
@@ -392,7 +531,7 @@ def main(grid: Grid, context: Context) -> None:
     bs:             int   = context.run_config.get("batch-size", 32)
     pred_len:       int   = context.run_config.get("pred-len", 120)  # Default to 120 if not specified
 
-    # Strategy selection: 'fedavg', 'fedprox', or 'scaffold'
+    # Strategy selection: 'fedavg', 'fedprox', 'scaffold', or 'statavg'
     strategy_name:  str   = context.run_config.get("strategy", "fedavg").lower()
     proximal_mu:    float = context.run_config.get("proximal-mu", 0.01)
 
@@ -513,6 +652,11 @@ def main(grid: Grid, context: Context) -> None:
         )
     elif strategy_name == "scaffold":
         strategy = ScaffoldWithMetrics(
+            fraction_train=fraction_train,
+            personalize=personalize,
+        )
+    elif strategy_name == "statavg":
+        strategy = StatAvgWithMetrics(
             fraction_train=fraction_train,
             personalize=personalize,
         )

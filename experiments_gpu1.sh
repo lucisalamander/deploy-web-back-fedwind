@@ -14,7 +14,7 @@
 declare -a NUM_ROUNDS=(15)
 declare -a FRACTION_TRAIN=(1.0)
 declare -a LOCAL_EPOCHS=(1)
-declare -a LEARNING_RATE=(0.0001 0.0003 0.0005 0.001)
+declare -a LEARNING_RATE=(0.001)
 declare -a BATCH_SIZE=(32)
 declare -a NUM_CLIENTS=(5)
 
@@ -31,9 +31,9 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 # MODEL ARCHITECTURE PARAMETERS
 # ============================================================================
-declare -a MODEL=(bart_nonlinear bert_nonlinear llama_nonlinear)
+declare -a MODEL=(llama_nonlinear)
 declare -a SEQ_LEN=(336)
-declare -a PRED_LEN=(72)
+declare -a PRED_LEN=(1 432)
 declare -a LABEL_LEN=(48)
 declare -a PATCH_SIZE=(16)
 declare -a STRIDE=(16)
