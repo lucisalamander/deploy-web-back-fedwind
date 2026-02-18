@@ -43,7 +43,11 @@ from my_flower_app.task import (
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-NUM_CITIES = 5
+# Hard-coded VNMET dataset configuration
+VNMET_DATA_FOLDER = "/raid/tin_trungchau/federated_learning/Long-term_Forecasting/datasets/VNMET"
+NUM_VNMET_DATASETS = 5
+
+NUM_CITIES = NUM_VNMET_DATASETS
 
 # ---------------------------------------------------------------------------
 # Config resolution: defaults <- .conf file <- CLI args
@@ -70,6 +74,10 @@ DEFAULTS = {
     "lora_dropout": 0.15,
     "dropout": 0.15,
     "model": "gpt4ts_nonlinear",
+    "dataset_name": "vnmet",
+    "target_column": "Vavg80 [m/s]",
+    "data_folder": VNMET_DATA_FOLDER,
+    "num_datasets": NUM_VNMET_DATASETS,
 }
 
 # Maps .conf shell-variable names  ->  (internal key, type)
@@ -94,6 +102,10 @@ CONF_KEY_MAP = {
     "LORA_DROPOUT": ("lora_dropout", float),
     "DROPOUT": ("dropout", float),
     "MODEL": ("model", str),
+    "DATASET_NAME": ("dataset_name", str),
+    "TARGET_COLUMN": ("target_column", str),
+    "DATA_FOLDER": ("data_folder", str),
+    "NUM_DATASETS": ("num_datasets", int),
 }
 
 
@@ -135,6 +147,10 @@ def build_parser():
     p.add_argument("--lora-dropout", type=float, default=None)
     p.add_argument("--dropout", type=float, default=None)
     p.add_argument("--model", type=str, default=None)
+    p.add_argument("--dataset-name", type=str, default=None)
+    p.add_argument("--target-column", type=str, default=None)
+    p.add_argument("--data-folder", type=str, default=None)
+    p.add_argument("--num-datasets", type=int, default=None)
     p.add_argument("--exp-dir", type=str, default=None)
     return p
 
@@ -276,8 +292,13 @@ def main():
     logging.info("=" * 60)
     logging.info("CENTRALIZED TRAINING  (mirrors federated setup)")
     logging.info("=" * 60)
+    logging.info("VNMET CONFIGURATION (hard-coded):")
+    logging.info(f"  data_folder: {cfg['data_folder']}")
+    logging.info(f"  num_datasets: {cfg['num_datasets']}")
+    logging.info("=" * 60)
     for k, v in sorted(cfg.items()):
-        logging.info(f"  {k}: {v}")
+        if k not in ['data_folder', 'num_datasets']:
+            logging.info(f"  {k}: {v}")
     logging.info(f"  exp_dir: {exp_dir}")
     logging.info("=" * 60)
 
@@ -308,7 +329,7 @@ def main():
 
     model = Net(configs=cfg_ns, device=device)
     trainloader = load_centralized_train(bs=cfg["batch_size"], cfg=cfg_ns)
-    logging.info(f"Training samples: {len(trainloader.dataset)} across {NUM_CITIES} cities")
+    logging.info(f"Training samples: {len(trainloader.dataset)} across {cfg['num_datasets']} datasets from VNMET")
 
     best = {"round": 0, "loss": float("inf"), "state": None}
     best_val_loss = float("inf")

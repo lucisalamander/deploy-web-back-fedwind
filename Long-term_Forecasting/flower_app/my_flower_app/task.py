@@ -16,6 +16,10 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format= '%(asctime)s - %(levelname)s - %(message)s')
 
+# Hard-coded VNMET dataset configuration
+VNMET_DATA_FOLDER = "datasets/VNMET"
+VNMET_DATASET_FILES = ["001.csv", "002.csv", "003.csv", "004.csv", "005.csv"]
+VNMET_TARGET_COLUMN = "Vavg80 [m/s]"
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 # Repo root is two levels above project_root (Long-term_Forecasting -> federated_learning -> repo)
@@ -487,16 +491,17 @@ def load_client_train(partition_id: int, num_partitions: int, bs: int = 32, cfg:
     """
     Each client loads a different partition of the *training* data (70% of full dataset).
     cfg must be provided with pred_len specified.
+    Uses hard-coded VNMET dataset configuration.
     """
     if cfg is None:
         raise ValueError("cfg must be provided to load_client_train(). Use get_default_configs(pred_len=1X) to create cfg.")
 
-    root_path = os.path.join(project_root, "datasets", "custom")
-    client_datasets = ["nasa_almaty.csv", "nasa_zhezkazgan.csv", "nasa_aktau.csv", "nasa_taraz.csv", "nasa_aktobe.csv"]
+    root_path = os.path.join(project_root, VNMET_DATA_FOLDER)
+    client_datasets = VNMET_DATASET_FILES
     data_path = client_datasets[partition_id]
     label_len = getattr(cfg, "label_len", 48)
     seq_len, pred_len = cfg.seq_len, cfg.pred_len
-    target = "WS50M"
+    target = VNMET_TARGET_COLUMN
 
     full_train = Dataset_Custom(
         root_path=root_path,
@@ -519,16 +524,17 @@ def load_client_val(partition_id: int, bs: int = 32, cfg: SimpleNamespace = None
     """
     Each client loads their local validation data (20% of their local dataset).
     cfg must be provided with pred_len specified.
+    Uses hard-coded VNMET dataset configuration.
     """
     if cfg is None:
         raise ValueError("cfg must be provided to load_client_val(). Use get_default_configs(pred_len=1X) to create cfg.")
 
-    root_path = os.path.join(project_root, "datasets", "custom")
-    client_datasets = ["nasa_almaty.csv", "nasa_zhezkazgan.csv", "nasa_aktau.csv", "nasa_taraz.csv", "nasa_aktobe.csv"]
+    root_path = os.path.join(project_root, VNMET_DATA_FOLDER)
+    client_datasets = VNMET_DATASET_FILES
     data_path = client_datasets[partition_id]
     label_len = getattr(cfg, "label_len", 48)
     seq_len, pred_len = cfg.seq_len, cfg.pred_len
-    target = "WS50M"
+    target = VNMET_TARGET_COLUMN
 
     val_dataset = Dataset_Custom(
         root_path=root_path,
@@ -548,16 +554,17 @@ def load_client_test(partition_id: int, bs: int = 32, cfg: SimpleNamespace = Non
     """
     Each client loads their local test data (10% of their local dataset).
     cfg must be provided with pred_len specified.
+    Uses hard-coded VNMET dataset configuration.
     """
     if cfg is None:
         raise ValueError("cfg must be provided to load_client_test(). Use get_default_configs(pred_len=1X) to create cfg.")
 
-    root_path = os.path.join(project_root, "datasets", "custom")
-    client_datasets = ["nasa_almaty.csv", "nasa_zhezkazgan.csv", "nasa_aktau.csv", "nasa_taraz.csv", "nasa_aktobe.csv"]
+    root_path = os.path.join(project_root, VNMET_DATA_FOLDER)
+    client_datasets = VNMET_DATASET_FILES
     data_path = client_datasets[partition_id]
     label_len = getattr(cfg, "label_len", 48)
     seq_len, pred_len = cfg.seq_len, cfg.pred_len
-    target = "WS50M"
+    target = VNMET_TARGET_COLUMN
 
     test_dataset = Dataset_Custom(
         root_path=root_path,
@@ -575,18 +582,19 @@ def load_client_test(partition_id: int, bs: int = 32, cfg: SimpleNamespace = Non
 
 def _load_centralized(flag: str, bs: int, cfg: SimpleNamespace, shuffle: bool):
     """
-    Load all 5 cities with the same per-city temporal split as federated,
-    then concatenate. Each city's 70/10/20 boundary is computed independently,
+    Load all VNMET datasets with the same per-dataset temporal split as federated,
+    then concatenate. Each dataset's 70/10/20 boundary is computed independently,
     so the combined dataset is directly comparable to the federated setup.
+    Uses hard-coded VNMET dataset configuration.
     """
     if cfg is None:
         raise ValueError("cfg must be provided. Use get_default_configs(pred_len=...) to create cfg.")
 
-    root_path = os.path.join(project_root, "datasets", "custom")
-    client_datasets = ["nasa_almaty.csv", "nasa_zhezkazgan.csv", "nasa_aktau.csv", "nasa_taraz.csv", "nasa_aktobe.csv"]
+    root_path = os.path.join(project_root, VNMET_DATA_FOLDER)
+    client_datasets = VNMET_DATASET_FILES
     label_len = getattr(cfg, "label_len", 48)
     seq_len, pred_len = cfg.seq_len, cfg.pred_len
-    target = "WS50M"
+    target = VNMET_TARGET_COLUMN
 
     datasets = []
     for i, data_path in enumerate(client_datasets):
