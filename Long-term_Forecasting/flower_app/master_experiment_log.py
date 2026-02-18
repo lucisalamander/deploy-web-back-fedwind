@@ -59,6 +59,10 @@ SCHEMA = OrderedDict([
     ("timestamp",                ("str",   None,  "Run timestamp extracted from folder name")),
     ("seed",                     ("int",   None,  "Random seed (for multi-seed runs)")),
 
+    # ── A2. DATASET INFORMATION ──────────────────────────────────────────────
+    ("dataset_name",             ("str",   None,  "Dataset name (e.g., VNMET, custom, nasa_almaty)")),
+    ("target_column",            ("str",   None,  "Target column name for forecasting")),
+
     # ── B. PRIMARY AXES (main comparison dimensions in the paper) ────────────
     ("model",                    ("str",   None,  "Model name: gpt4ts_nonlinear, bert_nonlinear, llama_nonlinear, bart_nonlinear, patchtst, dlinear, informer")),
     ("fl_algorithm",             ("str",   None,  "FL strategy: fedavg, fedprox, scaffold, fedln, fedper, centralized, local_only")),
@@ -328,6 +332,10 @@ def build_experiment_row(exp_dir: str) -> Dict[str, Any]:
 
     # A2. SEED
     row["seed"] = config.get("random-seed", config.get("random_seed", None))
+
+    # A2. DATASET INFORMATION
+    row["dataset_name"] = config.get("dataset-name", config.get("dataset_name", None))
+    row["target_column"] = config.get("target-column", config.get("target_column", None))
 
     # B. PRIMARY AXES
     row["model"] = config.get("model", None)

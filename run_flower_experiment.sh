@@ -108,6 +108,10 @@ DROPOUT=0.15  # Model dropout for regularization (default: 0.15)
 # Model selection (passed through to pyproject.toml via --run-config)
 MODEL="gpt4ts_nonlinear"
 
+# Dataset parameters
+DATASET_NAME=""
+TARGET_COLUMN=""
+
 # Conda environment
 CONDA_ENV=flwr39
 
@@ -162,6 +166,10 @@ Configuration:
     --config FILE             Load parameters from config file (default: experiment_config.conf)
                              Config file values override script defaults.
                              Command-line arguments override config file.
+
+Dataset Options:
+    --dataset-name NAME       Dataset name (e.g., VNMET, custom, nasa_almaty)
+    --target-column COL       Target column name for forecasting
 
 Setup Options:
     --setup                   Run full environment setup (Python, CUDA, venv checks)
@@ -562,6 +570,14 @@ parse_args() {
                 ;;
             --early-stop-patience)
                 EARLY_STOP_PATIENCE="$2"
+                shift 2
+                ;;
+            --dataset-name)
+                DATASET_NAME="$2"
+                shift 2
+                ;;
+            --target-column)
+                TARGET_COLUMN="$2"
                 shift 2
                 ;;
             *)
@@ -971,9 +987,12 @@ display_config() {
     echo -e "  ${CYAN}LLM Backbone:${NC}            $MODEL"
 
     echo -e "\n${YELLOW}Dataset Information:${NC}"
-    echo -e "  ${CYAN}Client Datasets:${NC}         5 NASA wind datasets (Almaty, Zhezkazgan, Aktau, Taraz, Aktobe)"
-    echo -e "  ${CYAN}Server Dataset:${NC}          nasa_astana.csv (validation/test)"
-    echo -e "  ${CYAN}Target Variable:${NC}         WS50M (Wind Speed at 50m)"
+    if [ -n "$DATASET_NAME" ]; then
+        echo -e "  ${CYAN}Dataset Name:${NC}            $DATASET_NAME"
+    fi
+    if [ -n "$TARGET_COLUMN" ]; then
+        echo -e "  ${CYAN}Target Column:${NC}           $TARGET_COLUMN"
+    fi
     echo -e "  ${CYAN}Data Split:${NC}              70% train, 20% val, 10% test"
 
     echo -e "\n${YELLOW}Experiment Details:${NC}"
@@ -1017,6 +1036,14 @@ run_flower() {
     # Build Flower command (string values must be quoted for TOML format)
     RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE pred-len=$PRED_LEN label-len=$LABEL_LEN strategy=\"$STRATEGY\" proximal-mu=$PROXIMAL_MU warmup-rounds=$WARMUP_ROUNDS weight-decay=$WEIGHT_DECAY early-stopping=$EARLY_STOPPING early-stop-patience=$EARLY_STOP_PATIENCE seq-len=$SEQ_LEN patch-size=$PATCH_SIZE stride=$STRIDE d-model=$D_MODEL hidden-size=$HIDDEN_SIZE kernel-size=$KERNEL_SIZE llm-layers=$LLM_LAYERS enc-in=$ENC_IN dec-in=$DEC_IN c-out=$C_OUT embed-type=$EMBED_TYPE embed=\"$EMBED\" freq=\"$FREQ\" factor=$FACTOR n-heads=$N_HEADS e-layers=$E_LAYERS d-layers=$D_LAYERS d-ff=$D_FF distil=$DISTIL activation=\"$ACTIVATION\" output-attention=$OUTPUT_ATTENTION fc-dropout=$FC_DROPOUT head-dropout=$HEAD_DROPOUT patch-len=$PATCH_LEN padding-patch=\"$PADDING_PATCH\" revin=$REVIN affine=$AFFINE subtract-last=$SUBTRACT_LAST decomposition=$DECOMPOSITION individual=$INDIVIDUAL lora-r=$LORA_R lora-alpha=$LORA_ALPHA lora-dropout=$LORA_DROPOUT dropout=$DROPOUT model=\"$MODEL\" num-clients=$NUM_CLIENTS random-seed=2021"
 
+    # Add dataset parameters if provided
+    if [ -n "$DATASET_NAME" ]; then
+        RUN_CONFIG="$RUN_CONFIG dataset-name=\"$DATASET_NAME\""
+    fi
+    if [ -n "$TARGET_COLUMN" ]; then
+        RUN_CONFIG="$RUN_CONFIG target-column=\"$TARGET_COLUMN\""
+    fi
+
     # Get the appropriate federation name based on client count
     FEDERATION_NAME=$(get_federation_name)
 
@@ -1044,6 +1071,14 @@ run_flower() {
         echo "Experiment Configuration"
         echo "======================="
         echo "Timestamp: $TIMESTAMP"
+        echo ""
+        echo "Dataset Parameters:"
+        if [ -n "$DATASET_NAME" ]; then
+            echo "  dataset-name: $DATASET_NAME"
+        fi
+        if [ -n "$TARGET_COLUMN" ]; then
+            echo "  target-column: $TARGET_COLUMN"
+        fi
         echo ""
         echo "Federated Learning Parameters:"
         echo "  num-server-rounds: $NUM_ROUNDS"
