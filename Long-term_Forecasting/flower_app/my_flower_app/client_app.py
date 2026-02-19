@@ -78,13 +78,14 @@ def train(msg: Message, context: Context):
     pid = context.node_config["partition-id"]
     npt = context.node_config["num-partitions"]
     bs  = context.run_config.get("batch-size", 32)
-    trainloader = load_client_train(pid, npt, bs=bs, cfg=configs)
+    dataset_name = context.run_config.get("dataset-name", "VNMET")
+    trainloader = load_client_train(pid, npt, bs=bs, cfg=configs, dataset_name=dataset_name)
     
     # Get experiment directory from environment variable
     exp_dir = os.environ.get("FLOWER_EXP_DIR", ".")
     
     # Load validation set for tracking local overfitting
-    valloader = load_client_val(pid, bs=bs, cfg=configs)
+    valloader = load_client_val(pid, bs=bs, cfg=configs, dataset_name=dataset_name)
 
     logging.info(f"[CLIENT {pid}] Training on {len(trainloader.dataset)} samples, BatchSize={bs}")
 
@@ -228,6 +229,7 @@ def evaluate(msg: Message, context: Context):
 
     pid = context.node_config["partition-id"]
     bs = context.run_config.get("batch-size", 32)
+    dataset_name = context.run_config.get("dataset-name", "VNMET")
     config_record = msg.content.get("config", None)
     logging.info(
         "[CLIENT %s] Eval config type=%s, value=%s, has_data=%s",
@@ -249,7 +251,7 @@ def evaluate(msg: Message, context: Context):
     exp_dir = os.environ.get("FLOWER_EXP_DIR", ".")
 
     # Validation evaluation (20% of data)
-    valloader = load_client_val(pid, bs=bs, cfg=configs)
+    valloader = load_client_val(pid, bs=bs, cfg=configs, dataset_name=dataset_name)
     logging.info(f"[CLIENT {pid}] Evaluating on {len(valloader.dataset)} validation samples")
 
     val_start_time = time.time()
@@ -262,7 +264,7 @@ def evaluate(msg: Message, context: Context):
     _save_predictions_to_csv(val_preds, val_trues, exp_dir, pid, current_round, "val", configs.pred_len)
 
     # Test evaluation (10% of data)
-    testloader = load_client_test(pid, bs=bs, cfg=configs)
+    testloader = load_client_test(pid, bs=bs, cfg=configs, dataset_name=dataset_name)
     logging.info(f"[CLIENT {pid}] Evaluating on {len(testloader.dataset)} test samples")
 
     test_start_time = time.time()

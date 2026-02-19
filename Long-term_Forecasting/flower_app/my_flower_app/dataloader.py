@@ -155,6 +155,8 @@ class Dataset_Custom(Dataset):
             self.pred_len = size[2]
         if dataset_name == "none":
             self.dataset_name = Path(data_path).stem.lower()
+        else:
+            self.dataset_name = str(dataset_name).lower()
         # init
         assert flag in ['train', 'test', 'val']
         type_map = {'train': 0, 'val': 1, 'test': 2}
@@ -182,6 +184,35 @@ class Dataset_Custom(Dataset):
         else:
             df_raw = pd.read_csv(os.path.join(self.root_path,
                                               self.data_path))
+            if 'date' not in df_raw.columns:
+                normalized_map = {}
+                for col in df_raw.columns:
+                    norm = (
+                        str(col)
+                        .strip()
+                        .lower()
+                        .replace(" ", "")
+                        .replace("_", "")
+                        .replace("-", "")
+                        .replace("/", "")
+                        .replace("\\", "")
+                    )
+                    normalized_map[col] = norm
+                date_candidates = [
+                    col for col, norm in normalized_map.items()
+                    if norm in {"date", "datetime", "timestamp"}
+                ]
+                if date_candidates:
+                    df_raw = df_raw.rename(columns={date_candidates[0]: "date"})
+            if 'date' not in df_raw.columns:
+                raise KeyError(f"'date' column not found in {self.data_path}. Available columns: {list(df_raw.columns)}")
+            if self.target not in df_raw.columns:
+                raise KeyError(f"Target '{self.target}' not found in {self.data_path}. Available columns: {list(df_raw.columns)}")
+
+            # Ensure a valid chronological datetime axis for time feature extraction/splitting.
+            df_raw['date'] = pd.to_datetime(df_raw['date'], errors='raise')
+            if not df_raw['date'].is_monotonic_increasing:
+                df_raw = df_raw.sort_values('date').reset_index(drop=True)
 
         '''
         df_raw.columns: ['date', ...(other features), target feature]

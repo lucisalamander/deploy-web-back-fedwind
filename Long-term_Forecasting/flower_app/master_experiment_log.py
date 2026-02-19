@@ -45,6 +45,8 @@ from collections import OrderedDict
 import numpy as np
 import pandas as pd
 
+from my_flower_app.task import DATASET_REGISTRY
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -147,14 +149,10 @@ SCHEMA = OrderedDict([
 ])
 
 
-# City names corresponding to client partition IDs (from task.py)
-CLIENT_CITIES = {
-    0: "Almaty",
-    1: "Zhezkazgan",
-    2: "Aktau",
-    3: "Taraz",
-    4: "Aktobe",
-}
+def get_client_names(dataset_name):
+    if dataset_name and dataset_name.upper() in DATASET_REGISTRY:
+        return DATASET_REGISTRY[dataset_name.upper()].get("client_names", {})
+    return {i: f"client_{i}" for i in range(10)}
 
 
 def get_empty_row() -> Dict[str, Any]:
@@ -233,7 +231,9 @@ def _parse_timing_summary(csv_path: str) -> Dict[str, Any]:
         return {}
 
 
-def _parse_client_eval_metrics(metrics_dir: str, best_round: int) -> Dict[str, Any]:
+def _parse_client_eval_metrics(
+    metrics_dir: str, best_round: int, dataset_name: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Parse per-client eval metrics CSVs to compute fairness metrics.
     Reads: metrics/client{N}_eval_metrics.csv
@@ -283,8 +283,9 @@ def _parse_client_eval_metrics(metrics_dir: str, best_round: int) -> Dict[str, A
     # Identify best/worst cities
     best_client = min(client_maes, key=client_maes.get)
     worst_client = max(client_maes, key=client_maes.get)
-    result["client_val_mae_best_city"] = CLIENT_CITIES.get(best_client, f"client_{best_client}")
-    result["client_val_mae_worst_city"] = CLIENT_CITIES.get(worst_client, f"client_{worst_client}")
+    client_cities = get_client_names(dataset_name)
+    result["client_val_mae_best_city"] = client_cities.get(best_client, f"client_{best_client}")
+    result["client_val_mae_worst_city"] = client_cities.get(worst_client, f"client_{worst_client}")
 
     # Fairness ratio
     if result["client_val_mae_min"] > 0:
@@ -492,7 +493,9 @@ def build_experiment_row(exp_dir: str) -> Dict[str, Any]:
     metrics_dir = str(exp_path / "metrics")
     best_round = row.get("best_round")
     if best_round is not None:
-        client_fairness = _parse_client_eval_metrics(metrics_dir, best_round)
+        client_fairness = _parse_client_eval_metrics(
+            metrics_dir, best_round, dataset_name=row.get("dataset_name")
+        )
         row.update(client_fairness)
 
     # ── J. STATUS ────────────────────────────────────────────────────────

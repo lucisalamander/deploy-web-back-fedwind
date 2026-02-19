@@ -33,6 +33,7 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from my_flower_app.task import (
     get_default_configs,
+    get_dataset_config,
     Net,
     load_centralized_train,
     load_client_val,
@@ -42,12 +43,6 @@ from my_flower_app.task import (
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-# Hard-coded VNMET dataset configuration
-VNMET_DATA_FOLDER = "/raid/tin_trungchau/federated_learning/Long-term_Forecasting/datasets/VNMET"
-NUM_VNMET_DATASETS = 5
-
-NUM_CITIES = NUM_VNMET_DATASETS
 
 # ---------------------------------------------------------------------------
 # Config resolution: defaults <- .conf file <- CLI args
@@ -75,9 +70,6 @@ DEFAULTS = {
     "dropout": 0.15,
     "model": "gpt4ts_nonlinear",
     "dataset_name": "vnmet",
-    "target_column": "Vavg80 [m/s]",
-    "data_folder": VNMET_DATA_FOLDER,
-    "num_datasets": NUM_VNMET_DATASETS,
 }
 
 # Maps .conf shell-variable names  ->  (internal key, type)
@@ -103,9 +95,6 @@ CONF_KEY_MAP = {
     "DROPOUT": ("dropout", float),
     "MODEL": ("model", str),
     "DATASET_NAME": ("dataset_name", str),
-    "TARGET_COLUMN": ("target_column", str),
-    "DATA_FOLDER": ("data_folder", str),
-    "NUM_DATASETS": ("num_datasets", int),
 }
 
 
@@ -148,9 +137,6 @@ def build_parser():
     p.add_argument("--dropout", type=float, default=None)
     p.add_argument("--model", type=str, default=None)
     p.add_argument("--dataset-name", type=str, default=None)
-    p.add_argument("--target-column", type=str, default=None)
-    p.add_argument("--data-folder", type=str, default=None)
-    p.add_argument("--num-datasets", type=int, default=None)
     p.add_argument("--exp-dir", type=str, default=None)
     return p
 
@@ -224,14 +210,15 @@ def _save_predictions_to_csv(preds, trues, exp_dir, city_id, round_num, split_na
     logging.info(f"[CENTRALIZED city {city_id}] Saved {len(df)} {split_name} predictions to {csv_path}")
 
 
-def evaluate_per_city(model, device, cfg_ns, bs, exp_dir, round_num):
+def evaluate_per_city(model, device, cfg_ns, bs, exp_dir, round_num, dataset_name="VNMET"):
+    ds_cfg = get_dataset_config(dataset_name)
     val_losses, val_maes, val_rmses = [], [], []
     test_losses, test_maes, test_rmses = [], [], []
     val_durations, test_durations = [], []
 
-    for city_id in range(NUM_CITIES):
-        valloader = load_client_val(city_id, bs=bs, cfg=cfg_ns)
-        testloader = load_client_test(city_id, bs=bs, cfg=cfg_ns)
+    for city_id in range(ds_cfg["num_clients"]):
+        valloader = load_client_val(city_id, bs=bs, cfg=cfg_ns, dataset_name=dataset_name)
+        testloader = load_client_test(city_id, bs=bs, cfg=cfg_ns, dataset_name=dataset_name)
 
         t0 = time.time()
         v_loss, v_mae, v_rmse, val_preds, val_trues = test_fn(model, valloader, device, return_predictions=True)
@@ -256,14 +243,14 @@ def evaluate_per_city(model, device, cfg_ns, bs, exp_dir, round_num):
         )
 
     return {
-        "val_loss": sum(val_losses) / NUM_CITIES,
-        "val_mae": sum(val_maes) / NUM_CITIES,
-        "val_rmse": sum(val_rmses) / NUM_CITIES,
-        "test_loss": sum(test_losses) / NUM_CITIES,
-        "test_mae": sum(test_maes) / NUM_CITIES,
-        "test_rmse": sum(test_rmses) / NUM_CITIES,
-        "val_duration_sec": sum(val_durations) / NUM_CITIES,
-        "test_duration_sec": sum(test_durations) / NUM_CITIES,
+        "val_loss": sum(val_losses) / len(val_losses),
+        "val_mae": sum(val_maes) / len(val_maes),
+        "val_rmse": sum(val_rmses) / len(val_rmses),
+        "test_loss": sum(test_losses) / len(test_losses),
+        "test_mae": sum(test_maes) / len(test_maes),
+        "test_rmse": sum(test_rmses) / len(test_rmses),
+        "val_duration_sec": sum(val_durations) / len(val_durations),
+        "test_duration_sec": sum(test_durations) / len(test_durations),
     }
 
 
@@ -275,6 +262,8 @@ def evaluate_per_city(model, device, cfg_ns, bs, exp_dir, round_num):
 def main():
     args = build_parser().parse_args()
     cfg = resolve_config(args)
+    ds_cfg = get_dataset_config(cfg["dataset_name"])
+    num_cities = ds_cfg["num_clients"]
 
     exp_dir = args.exp_dir or os.path.join(
         "/raid/tin_trungchau/tmp",
@@ -292,13 +281,14 @@ def main():
     logging.info("=" * 60)
     logging.info("CENTRALIZED TRAINING  (mirrors federated setup)")
     logging.info("=" * 60)
-    logging.info("VNMET CONFIGURATION (hard-coded):")
-    logging.info(f"  data_folder: {cfg['data_folder']}")
-    logging.info(f"  num_datasets: {cfg['num_datasets']}")
+    logging.info("DATASET CONFIGURATION (from DATASET_REGISTRY):")
+    logging.info(f"  dataset_name: {cfg['dataset_name']}")
+    logging.info(f"  folder: {ds_cfg['folder']}")
+    logging.info(f"  target: {ds_cfg['target']}")
+    logging.info(f"  num_clients: {num_cities}")
     logging.info("=" * 60)
     for k, v in sorted(cfg.items()):
-        if k not in ['data_folder', 'num_datasets']:
-            logging.info(f"  {k}: {v}")
+        logging.info(f"  {k}: {v}")
     logging.info(f"  exp_dir: {exp_dir}")
     logging.info("=" * 60)
 
@@ -328,8 +318,12 @@ def main():
     )
 
     model = Net(configs=cfg_ns, device=device)
-    trainloader = load_centralized_train(bs=cfg["batch_size"], cfg=cfg_ns)
-    logging.info(f"Training samples: {len(trainloader.dataset)} across {cfg['num_datasets']} datasets from VNMET")
+    trainloader = load_centralized_train(
+        bs=cfg["batch_size"], cfg=cfg_ns, dataset_name=cfg["dataset_name"]
+    )
+    logging.info(
+        f"Training samples: {len(trainloader.dataset)} across {num_cities} datasets from {cfg['dataset_name']}"
+    )
 
     best = {"round": 0, "loss": float("inf"), "state": None}
     best_val_loss = float("inf")
@@ -356,7 +350,9 @@ def main():
         train_duration = time.time() - train_start
 
         # Evaluate per city, average equally
-        eval_metrics = evaluate_per_city(model, device, cfg_ns, cfg["batch_size"], exp_dir, r)
+        eval_metrics = evaluate_per_city(
+            model, device, cfg_ns, cfg["batch_size"], exp_dir, r, dataset_name=cfg["dataset_name"]
+        )
         round_duration = time.time() - round_start
 
         row = {
@@ -424,7 +420,7 @@ def main():
                 "pred_len": cfg["pred_len"],
                 "learning_rate": cfg["lr"],
                 "local_epochs": cfg["local_epochs"],
-                "num_clients": NUM_CITIES,
+                "num_clients": num_cities,
                 "num_trainable_params": num_trainable_params,
                 "lora_r": cfg["lora_r"],
                 "lora_alpha": cfg["lora_alpha"],

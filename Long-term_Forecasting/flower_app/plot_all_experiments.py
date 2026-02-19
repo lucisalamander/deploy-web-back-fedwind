@@ -412,9 +412,9 @@ def main():
         return
 
     for experiment_dir in experiment_dirs:
-        # if (experiment_dir / "plots").exists():
-        #     print(f"Skipping {experiment_dir} (plots folder already exists)")
-        #     continue
+        if (experiment_dir / "plots").exists():
+            print(f"Skipping {experiment_dir} (plots folder already exists)")
+            continue
         run_for_experiment(experiment_dir)
 
 if __name__ == "__main__":
