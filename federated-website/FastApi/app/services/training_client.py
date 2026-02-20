@@ -68,9 +68,13 @@ from app.schemas import TrainingInput, TrainingOutput
 logger = logging.getLogger(__name__)
 
 TRAINING_REPO_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "Long-term_Forecasting")
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "Long-term_Forecasting", "flower_app")
 )
 RUN_SCRIPT = os.path.join(TRAINING_REPO_ROOT, "run_centralized.py")
+TRAINING_PYTHON = os.environ.get(
+    "TRAINING_PYTHON",
+    "/raid/tin_trungchau/conda_env/envs/flwr39/bin/python"
+)
 
 # Frontend enum values -> run_centralized.py --model values
 MODEL_NAME_MAP = {
@@ -124,7 +128,7 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     #      --seq-len, --dropout, --model, --dataset-name, etc.
     
     cmd = [
-        sys.executable,
+        TRAINING_PYTHON,
         RUN_SCRIPT,
         "--exp-dir", exp_dir,
         "--rounds", str(inp.epochs),
