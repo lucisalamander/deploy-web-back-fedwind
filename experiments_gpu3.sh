@@ -37,7 +37,7 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 # MODEL ARCHITECTURE PARAMETERS
 # ============================================================================
-declare -a MODEL=(llama_nonlinear)
+declare -a MODEL=(bart_nonlinear)
 declare -a SEQ_LEN=(336)
 declare -a PRED_LEN=(1 72 432)
 declare -a LABEL_LEN=(48)

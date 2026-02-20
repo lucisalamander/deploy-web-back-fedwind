@@ -20,7 +20,7 @@ declare -a TARGET_COLUMN=(Vavg80\ \[m/s\])
 declare -a NUM_ROUNDS=(15)
 declare -a FRACTION_TRAIN=(1.0)
 declare -a LOCAL_EPOCHS=(1)
-declare -a LEARNING_RATE=(0.0005)
+declare -a LEARNING_RATE=(0.001)
 declare -a BATCH_SIZE=(32)
 declare -a NUM_CLIENTS=(5)
 
@@ -37,7 +37,7 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 # MODEL ARCHITECTURE PARAMETERS
 # ============================================================================
-declare -a MODEL=(bert_nonlinear)
+declare -a MODEL=(llama_nonlinear)
 declare -a SEQ_LEN=(336)
 declare -a PRED_LEN=(1 72 432)
 declare -a LABEL_LEN=(48)

@@ -39,7 +39,7 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 declare -a MODEL=(gpt4ts_nonlinear)
 declare -a SEQ_LEN=(336)
-declare -a PRED_LEN=(1 72 432)
+declare -a PRED_LEN=(1 432)
 declare -a LABEL_LEN=(48)
 declare -a PATCH_SIZE=(16)
 declare -a STRIDE=(16)
