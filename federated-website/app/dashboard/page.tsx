@@ -299,7 +299,7 @@ export default function DashboardPage() {
               <div>
                 <h4 className="font-semibold text-foreground">Checking API Connection...</h4>
                 <p className="text-sm text-muted-foreground">
-                  Attempting to connect to FastAPI backend at localhost:8000
+                  Attempting to connect to FastAPI backend at localhost:8001
                 </p>
               </div>
             </>
@@ -321,7 +321,7 @@ export default function DashboardPage() {
                 <h4 className="font-semibold text-amber-800">Demo Mode - API Not Connected</h4>
                 <p className="text-sm text-amber-700">
                   FastAPI backend not detected. Start the backend with:{" "}
-                  <code className="bg-amber-100 px-1 rounded">uvicorn main:app --reload</code>
+                  <code className="bg-amber-100 px-1 rounded">uvicorn main:app --reload --port 8001</code>
                 </p>
               </div>
             </>

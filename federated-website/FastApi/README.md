@@ -88,7 +88,7 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-Docs: http://localhost:8000/docs
+Docs: http://localhost:8001/docs
 
 ---
 
@@ -112,7 +112,7 @@ YEAR,MO,DY,HR,WS10M
 ### Upload a CSV
 
 ```bash
-curl -X POST http://localhost:8000/api/upload \
+curl -X POST http://localhost:8001/api/upload \
   -F "file=@POWER_Hourly_Data.csv"
 ```
 
@@ -136,7 +136,7 @@ Response:
 ### Start Training
 
 ```bash
-curl -X POST http://localhost:8000/api/train \
+curl -X POST http://localhost:8001/api/train \
   -H "Content-Type: application/json" \
   -d '{
     "filename": "20260213_143022_POWER_Hourly_Data.csv",
@@ -267,7 +267,7 @@ Everything else (router, service, schemas, frontend) stays the same.
 
 ## CORS
 
-Allows requests from `localhost:3000` (Next.js) and `localhost:5173` (Vite).
+Allows requests from `localhost:3001` (Next.js) and `localhost:5173` (Vite).
 For production, restrict origins in `main.py`.
 
 ## License

@@ -10,7 +10,7 @@
  *   4. deleteFile()    -> DELETE /api/files/{fn} (remove a file)
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"
 
 // ============================================================
 // Generic fetch wrapper

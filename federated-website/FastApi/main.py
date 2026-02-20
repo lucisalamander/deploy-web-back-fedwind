@@ -13,7 +13,7 @@ Endpoints:
   POST   /api/train        Start centralized training
 
 Start:  uvicorn main:app --reload
-Docs:   http://localhost:8000/docs
+Docs:   http://localhost:8001/docs
 """
 
 from fastapi import FastAPI
@@ -67,6 +67,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3001",
         "http://localhost:5173",
         "*",
     ],
@@ -100,7 +101,7 @@ async def startup_event():
     print("=" * 56)
     print("  FedWind API  v2.0.0")
     print("=" * 56)
-    print("  Docs:   http://localhost:8000/docs")
+    print("  Docs:   http://localhost:8001/docs")
     print()
     print("  POST /api/upload         Upload CSV")
     print("  GET  /api/files          List files")
