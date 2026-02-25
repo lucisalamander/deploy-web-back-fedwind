@@ -1,57 +1,5 @@
 """
 Training Client - Bridge to the external centralized training repository.
-
-==========================================================================
-INTEGRATION GUIDE
-==========================================================================
-
-This module is a STUB.  It defines the interface that the service layer
-calls.  You must replace the body of `run_centralized_training()` with
-actual calls to your existing training repo.
-
-Your training repo (the one with Dataset_Custom, GPT4TS, etc.) should be
-importable as a Python package.  There are two ways to wire it in:
-
-OPTION A  -  pip install (recommended)
-------------------------------------------------------------------
-  1. In your training repo, add a minimal setup.py / pyproject.toml
-  2. pip install -e /path/to/centralized-training-repo
-  3. Then import directly:
-       from centralized_training.run import train_centralized
-
-OPTION B  -  sys.path hack (quick & dirty for development)
-------------------------------------------------------------------
-  import sys
-  sys.path.insert(0, "/absolute/path/to/centralized-training-repo")
-  from run_centralized import train_centralized
-
-==========================================================================
-EXPECTED FUNCTION SIGNATURE IN YOUR TRAINING REPO
-==========================================================================
-
-  def train_centralized(
-      csv_path: str,
-      model_name: str,        # "GPT4TS" | "LLAMA" | "BERT" | "BART"
-      pred_len: int,          # prediction horizon  (e.g. 6, 36, 144)
-      dropout: float,         # 0.0 - 0.5
-      seq_len: int = 336,     # input window length
-      batch_size: int = 32,
-      lr: float = 0.0001,
-      epochs: int = 10,
-  ) -> dict:
-      '''
-      Returns a dict like:
-      {
-          "mae": 0.6757,
-          "rmse": 0.8863,
-          "mape": 5.8,              # optional
-          "training_time_seconds": 42.5,
-          "predictions": [8.1, 8.3, ...],   # length = pred_len
-          "actuals":     [8.2, 8.5, ...],   # optional, same length
-      }
-      '''
-
-==========================================================================
 """
 
 import os
