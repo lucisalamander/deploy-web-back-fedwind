@@ -60,6 +60,9 @@ export interface TrainingConfig {
   prediction_length: number // 1, 3, 6, 36, 72, 144, 432
   dropout_rate: number      // 0.0 - 0.5
   mode: string              // centralized | federated
+  // Federated-only fields (sent with every request, backend ignores in centralized mode)
+  federated_algorithm: string  // FedAvg | FedProx | FedBN | FedPer | SCAFFOLD
+  num_clients: number          // 1 - 10
 }
 
 export interface TrainingMetrics {
@@ -95,6 +98,21 @@ export interface FileListItem {
 export interface FileListResponse {
   files: FileListItem[]
   total: number
+}
+
+// Feedback types
+export interface FeedbackEntry {
+  id: string
+  message: string
+  name: string | null
+  context: string | null
+  created_at: string
+}
+
+export interface FeedbackResponse {
+  success: boolean
+  message: string
+  entry: FeedbackEntry
 }
 
 // Kept for backward compatibility with federated mode UI
@@ -204,6 +222,21 @@ export async function submitModelUpdate(
       model_weights: weights,
       num_samples: 1000,
     }),
+  })
+}
+
+// ---- Feedback API ----
+
+/** POST /api/feedback - Submit user feedback */
+export async function submitFeedback(
+  message: string,
+  name?: string,
+  context?: string,
+): Promise<FeedbackResponse> {
+  return apiFetch<FeedbackResponse>("/api/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, name, context }),
   })
 }
 

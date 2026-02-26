@@ -1,5 +1,5 @@
 """
-Training Router - Triggers centralized model training.
+Training Router - Triggers centralized or federated model training.
 
 Endpoint:
   POST /api/train  -  Start training with uploaded file + config
@@ -8,8 +8,10 @@ Data flow:
   Frontend (config + filename)
     -> This router (validates request)
     -> training_service.start_training()
-    -> training_client.run_centralized_training()
+    -> training_client (centralized) OR federated_training_client (federated)
     -> TrainingResult back to frontend
+
+The `mode` field in the config determines which training pipeline is used.
 """
 
 from fastapi import APIRouter, HTTPException, status
@@ -22,18 +24,19 @@ router = APIRouter(prefix="/api")
 @router.post(
     "/train",
     response_model=TrainingResult,
-    summary="Start centralized training",
+    summary="Start training (centralized or federated)",
     description=(
-        "Triggers centralized model training using a previously uploaded CSV file. "
-        "Pass the `filename` from the upload response along with training config. "
+        "Triggers model training using a previously uploaded CSV file. "
+        "The `mode` field in config determines centralized vs federated. "
+        "For federated mode, `federated_algorithm` and `num_clients` are also used. "
         "Returns metrics (MAE, RMSE, MAPE) and forecast predictions."
     ),
 )
 async def train(request: TrainRequest):
     """
-    Start centralized training.
+    Start training (centralized or federated).
 
-    Request body example:
+    Centralized request example:
     {
         "filename": "20260213_143022_POWER_Hourly_Data.csv",
         "config": {
@@ -44,19 +47,31 @@ async def train(request: TrainRequest):
         }
     }
 
+    Federated request example:
+    {
+        "filename": "20260213_143022_POWER_Hourly_Data.csv",
+        "config": {
+            "training_model": "GPT4TS",
+            "prediction_length": 6,
+            "dropout_rate": 0.2,
+            "mode": "federated",
+            "federated_algorithm": "FedAvg",
+            "num_clients": 5
+        }
+    }
+
     Response example:
     {
         "success": true,
-        "message": "Training complete using GPT4TS with 6-step horizon",
+        "message": "Federated training complete using GPT4TS with 6-step horizon (FedAvg)",
         "model_name": "GPT4TS",
         "prediction_length": 6,
         "dropout_rate": 0.2,
         "training_time_seconds": 3.21,
-        "metrics": { "mae": 0.6757, "rmse": 0.8863, "mape": 5.8 },
+        "metrics": { "mae": 0.7714, "rmse": 0.9884, "mape": 6.2 },
         "forecast": [
             { "step": 1, "predicted": 8.12, "actual": 8.20 },
-            { "step": 2, "predicted": 8.35, "actual": 8.50 },
-            ...
+            { "step": 2, "predicted": 8.35, "actual": 8.50 }
         ]
     }
     """

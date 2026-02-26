@@ -9,13 +9,11 @@ import {
   startTraining,
   checkHealth,
   testConnection,
-  getModelSkeleton,
-  submitModelUpdate,
   listUploadedFiles,
   deleteUploadedFile,
+  submitFeedback,
   type HealthResponse,
   type TrainingResult,
-  type ModelUpdateResponse,
 } from "@/lib/api"
 import { SectionHeader } from "@/components/section-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -43,6 +41,8 @@ import {
   Layers,
   Trash2,
   RefreshCw,
+  MessageSquare,
+  Send,
 } from "lucide-react"
 import {
   LineChart,
@@ -90,13 +90,18 @@ export default function DashboardPage() {
   const [apiConnected, setApiConnected] = useState<boolean | null>(null)
   const [apiHealth, setApiHealth] = useState<HealthResponse | null>(null)
   const [trainingResult, setTrainingResult] = useState<TrainingResult | null>(null)
-  const [federatedResult, setFederatedResult] = useState<ModelUpdateResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   
   // File management state
   const [uploadedFiles, setUploadedFiles] = useState<Array<{filename: string, size: number, modified: string}>>([])
   const [loadingFiles, setLoadingFiles] = useState(false)
   const [deletingFile, setDeletingFile] = useState<string | null>(null)
+
+  // Feedback state
+  const [feedbackMessage, setFeedbackMessage] = useState("")
+  const [feedbackName, setFeedbackName] = useState("")
+  const [sendingFeedback, setSendingFeedback] = useState(false)
+  const [feedbackSent, setFeedbackSent] = useState(false)
 
   // Load uploaded files list
   const loadUploadedFiles = async () => {
@@ -115,6 +120,28 @@ export default function DashboardPage() {
       console.error("[v0] Failed to load files:", err)
     } finally {
       setLoadingFiles(false)
+    }
+  }
+
+  // Submit feedback
+  const handleSubmitFeedback = async () => {
+    if (!feedbackMessage.trim()) return
+    
+    setSendingFeedback(true)
+    try {
+      await submitFeedback(
+        feedbackMessage.trim(),
+        feedbackName.trim() || undefined,
+        "dashboard"
+      )
+      setFeedbackMessage("")
+      setFeedbackName("")
+      setFeedbackSent(true)
+      setTimeout(() => setFeedbackSent(false), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send feedback")
+    } finally {
+      setSendingFeedback(false)
     }
   }
 
@@ -167,8 +194,6 @@ export default function DashboardPage() {
       const newFiles = Array.from(e.target.files)
       setFiles(prev => [...prev, ...newFiles])
       setError(null)
-      setUploadResult(null)
-      setFederatedResult(null)
     }
   }
 
@@ -182,7 +207,6 @@ export default function DashboardPage() {
     setIsProcessing(true)
     setError(null)
     setTrainingResult(null)
-    setFederatedResult(null)
 
     try {
       if (mode === "centralized") {
@@ -215,6 +239,8 @@ export default function DashboardPage() {
           prediction_length: parseInt(predictionLength),
           dropout_rate: parseFloat(dropoutRate),
           mode: "centralized" as const,
+          federated_algorithm: federalAlgorithm,
+          num_clients: parseInt(numClients),
         }
 
         const result = await startTraining(trainFilename, config)
@@ -226,37 +252,47 @@ export default function DashboardPage() {
         const fileInput = document.getElementById("file-upload") as HTMLInputElement
         if (fileInput) fileInput.value = ""
       } else {
-        // Federated mode: Local training, only model weights sent
-        setProcessingStep("Downloading model skeleton...")
-
-        if (apiConnected) {
-          // Real API flow
-          const skeleton = await getModelSkeleton()
-          setProcessingStep(`Training locally (${skeleton.model_type})...`)
-          await new Promise(resolve => setTimeout(resolve, 2000))
-
-          setProcessingStep("Submitting model updates...")
-          // Generate mock weights for demonstration
-          const mockWeights = { layer1: [0.1, 0.2], layer2: [0.3, 0.4] }
-          const result = await submitModelUpdate("web-client", skeleton.version, mockWeights, 1)
-          setFederatedResult(result)
-        } else {
-          // Demo mode simulation
-          await new Promise(resolve => setTimeout(resolve, 1500))
-          setProcessingStep("Training locally on your device...")
-          await new Promise(resolve => setTimeout(resolve, 2000))
-          setProcessingStep("Submitting model updates to server...")
-          await new Promise(resolve => setTimeout(resolve, 1000))
-          // Simulate federated result
-          setFederatedResult({
-            message: "Model update received successfully",
-            update_id: `demo-${Date.now()}`,
-            round_number: 5,
-            queue_position: 2,
-            total_clients_in_round: 8,
-          })
+        // Federated mode: Upload files -> then run federated training
+        if (files.length === 0) {
+          setError("Please select at least one CSV file to upload")
+          return
         }
+
+        // Step 1: Upload all files
+        const savedFilenames: string[] = []
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i]
+          setProcessingStep(`Uploading file ${i + 1} of ${files.length}: ${file.name}...`)
+          const uploadResult = await uploadFile(file)
+          savedFilenames.push(uploadResult.file.filename)
+        }
+
+        // Reload file list after uploads
+        await loadUploadedFiles()
+
+        // Step 2: Run federated training via /api/train with mode=federated
+        const trainFilename = savedFilenames[savedFilenames.length - 1]
+        setProcessingStep(
+          `Federated training: ${trainingModel} / ${federalAlgorithm} / ${numClients} clients...`
+        )
+
+        const config = {
+          training_model: trainingModel,
+          prediction_length: parseInt(predictionLength),
+          dropout_rate: parseFloat(dropoutRate),
+          mode: "federated" as const,
+          federated_algorithm: federalAlgorithm,
+          num_clients: parseInt(numClients),
+        }
+
+        const result = await startTraining(trainFilename, config)
+        setTrainingResult(result)
         setShowResults(true)
+
+        // Reset file selection
+        setFiles([])
+        const fileInput = document.getElementById("file-upload") as HTMLInputElement
+        if (fileInput) fileInput.value = ""
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred")
@@ -299,7 +335,7 @@ export default function DashboardPage() {
               <div>
                 <h4 className="font-semibold text-foreground">Checking API Connection...</h4>
                 <p className="text-sm text-muted-foreground">
-                  Attempting to connect to FastAPI backend at localhost:8001
+                  Attempting to connect to FastAPI backend at localhost:8000
                 </p>
               </div>
             </>
@@ -321,7 +357,7 @@ export default function DashboardPage() {
                 <h4 className="font-semibold text-amber-800">Demo Mode - API Not Connected</h4>
                 <p className="text-sm text-amber-700">
                   FastAPI backend not detected. Start the backend with:{" "}
-                  <code className="bg-amber-100 px-1 rounded">uvicorn main:app --reload --port 8001</code>
+                  <code className="bg-amber-100 px-1 rounded">uvicorn main:app --reload</code>
                 </p>
               </div>
             </>
@@ -359,24 +395,7 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {/* Federated Update Success */}
-      {federatedResult && (
-        <section className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
-          <div className="rounded-lg border border-green-200 bg-green-50 p-4 flex items-start gap-3">
-            <Shield className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="font-semibold text-green-800">Model Update Received Successfully</h4>
-              <p className="text-sm text-green-700">
-                Round {federatedResult.round_number} | Queue position: {federatedResult.queue_position} |{" "}
-                {federatedResult.total_clients_in_round} clients in this round
-              </p>
-              <p className="text-xs text-green-600 mt-1">
-                Your data never left your device. Only model weights were shared.
-              </p>
-            </div>
-          </div>
-        </section>
-      )}
+
 
       {/* Training Progress (shown during processing) */}
       {isProcessing && (
@@ -709,7 +728,7 @@ export default function DashboardPage() {
                 <Button
                   className="w-full gap-2"
                   onClick={handleStartTraining}
-                  disabled={isProcessing || (mode === "centralized" && files.length === 0)}
+                  disabled={isProcessing || files.length === 0}
                 >
                   {isProcessing ? (
                     <>
@@ -781,34 +800,34 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Federated Mode Info Panel */}
-                    {mode === "federated" && federatedResult && (
-                      <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-                        <h4 className="font-semibold text-foreground flex items-center gap-2 mb-3">
-                          <Layers className="h-4 w-4 text-primary" />
-                          Federated Learning Status
+                    {mode === "federated" && trainingResult && (
+                      <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                        <h4 className="font-semibold text-green-800 flex items-center gap-2 mb-3">
+                          <Shield className="h-4 w-4 text-green-600" />
+                          Federated Learning - Privacy Preserved
                         </h4>
                         <div className="grid gap-3 sm:grid-cols-3">
                           <div>
-                            <div className="text-xs text-muted-foreground">Current Round</div>
+                            <div className="text-xs text-muted-foreground">Algorithm</div>
                             <div className="text-lg font-semibold text-foreground">
-                              {federatedResult.round_number}
+                              {federalAlgorithm}
                             </div>
                           </div>
                           <div>
-                            <div className="text-xs text-muted-foreground">Queue Position</div>
+                            <div className="text-xs text-muted-foreground">Clients</div>
                             <div className="text-lg font-semibold text-foreground">
-                              {federatedResult.queue_position}
+                              {numClients}
                             </div>
                           </div>
                           <div>
-                            <div className="text-xs text-muted-foreground">Clients in Round</div>
+                            <div className="text-xs text-muted-foreground">Model</div>
                             <div className="text-lg font-semibold text-foreground">
-                              {federatedResult.total_clients_in_round}
+                              {trainingResult.model_name}
                             </div>
                           </div>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-3">
-                          Chart shows predictions from the current global model. Updates occur after aggregation.
+                        <p className="text-xs text-green-600 mt-3">
+                          Data stayed on each client device. Only model updates were aggregated on the server.
                         </p>
                       </div>
                     )}
@@ -910,10 +929,63 @@ export default function DashboardPage() {
           </StaggerItem>
         </StaggerContainer>
       </section>
+
+      {/* Feedback Section */}
+      <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
+        <div className="border-t border-border pt-8">
+          <div className="max-w-xl">
+            <div className="flex items-center gap-2 mb-4">
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-medium text-muted-foreground">Leave Feedback</h3>
+            </div>
+            
+            {feedbackSent ? (
+              <div className="flex items-center gap-2 text-sm text-green-600 py-2">
+                <CheckCircle2 className="h-4 w-4" />
+                Thank you for your feedback!
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={feedbackName}
+                  onChange={(e) => setFeedbackName(e.target.value)}
+                  placeholder="Name (optional)"
+                  className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <input
+                  type="text"
+                  value={feedbackMessage}
+                  onChange={(e) => setFeedbackMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !sendingFeedback && feedbackMessage.trim()) {
+                      handleSubmitFeedback()
+                    }
+                  }}
+                  placeholder="Share your thoughts or suggestions..."
+                  className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleSubmitFeedback}
+                  disabled={sendingFeedback || !feedbackMessage.trim()}
+                  className="gap-1.5 px-3"
+                >
+                  {sendingFeedback ? (
+                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  ) : (
+                    <Send className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground mt-2">
+              Your feedback helps us improve. Visible to creators only.
+            </p>
+          </div>
+        </div>
+      </section>
     </PageLayout>
   )
 }
-function setUploadResult(arg0: null) {
-  throw new Error("Function not implemented.")
-}
-

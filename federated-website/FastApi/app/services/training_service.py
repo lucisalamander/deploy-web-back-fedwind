@@ -19,9 +19,11 @@ from app.schemas import (
     TrainingResult,
     TrainingMetrics,
     ForecastPoint,
+    FederatedTrainingInput,
     VALID_PREDICTION_LENGTHS,
 )
 from app.services.training_client import run_centralized_training
+from app.services.federated_training_client import run_federated_training
 
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
@@ -84,12 +86,12 @@ def validate_config(config: TrainingConfig) -> None:
 
 def start_training(filename: str, config: TrainingConfig) -> TrainingResult:
     """
-    Full centralized training pipeline:
+    Unified training pipeline for both centralized and federated modes.
+
       1. Resolve file path
       2. Validate CSV + config
-      3. Build TrainingInput
-      4. Call training client
-      5. Return TrainingResult
+      3. Route to centralized or federated client
+      4. Convert output into TrainingResult for the frontend
 
     Raises ValueError for validation errors (caught by router as 422).
     Raises RuntimeError for training failures (caught by router as 500).
@@ -104,21 +106,34 @@ def start_training(filename: str, config: TrainingConfig) -> TrainingResult:
     validate_csv(file_path)
     validate_config(config)
 
-    # 3. Build training input
-    training_input = TrainingInput(
-        csv_path=file_path,
-        model_name=config.training_model.value,
-        prediction_length=config.prediction_length,
-        dropout_rate=config.dropout_rate,
-    )
+    # 3. Route based on mode
+    is_federated = config.mode.value == "federated"
 
-    # 4. Call training client (external repo bridge)
     try:
-        output = run_centralized_training(training_input)
+        if is_federated:
+            # Build federated training input
+            fed_input = FederatedTrainingInput(
+                csv_path=file_path,
+                model_name=config.training_model.value,
+                prediction_length=config.prediction_length,
+                dropout_rate=config.dropout_rate,
+                federated_algorithm=config.federated_algorithm.value,
+                num_clients=config.num_clients,
+            )
+            output = run_federated_training(fed_input)
+        else:
+            # Build centralized training input
+            training_input = TrainingInput(
+                csv_path=file_path,
+                model_name=config.training_model.value,
+                prediction_length=config.prediction_length,
+                dropout_rate=config.dropout_rate,
+            )
+            output = run_centralized_training(training_input)
     except Exception as e:
         raise RuntimeError(f"Training failed: {str(e)}")
 
-    # 5. Build forecast points for the frontend chart
+    # 4. Build forecast points for the frontend chart
     forecast: List[ForecastPoint] = []
     for i, pred in enumerate(output.predictions):
         actual = output.actuals[i] if output.actuals and i < len(output.actuals) else None
@@ -128,11 +143,14 @@ def start_training(filename: str, config: TrainingConfig) -> TrainingResult:
             actual=actual,
         ))
 
+    mode_label = "Federated" if is_federated else "Centralized"
+    algo_info = f" ({config.federated_algorithm.value})" if is_federated else ""
+
     return TrainingResult(
         success=True,
         message=(
-            f"Training complete using {config.training_model.value} "
-            f"with {config.prediction_length}-step horizon"
+            f"{mode_label} training complete using {config.training_model.value} "
+            f"with {config.prediction_length}-step horizon{algo_info}"
         ),
         model_name=config.training_model.value,
         prediction_length=config.prediction_length,

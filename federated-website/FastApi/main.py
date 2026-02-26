@@ -23,6 +23,7 @@ from app.routers.health import router as health_router
 from app.routers.upload import router as upload_router
 from app.routers.train import router as train_router
 from app.routers.federated import router as federated_router
+from app.routers.feedback import router as feedback_router
 
 
 # ---------------------------------------------------------------------------
@@ -35,15 +36,16 @@ app = FastAPI(
     description="""
 ## Wind Speed Forecasting API
 
-**Centralized Training Flow:**
+**Training Flow (Centralized & Federated):**
 ```
 Frontend (CSV + config)
   -> POST /api/upload      (save file)
-  -> POST /api/train       (run training)
+  -> POST /api/train       (run training - mode determines pipeline)
   <- TrainingResult        (metrics + forecast)
 ```
 
 **Supported models:** GPT4TS, LLAMA, BERT, BART
+**Training modes:** centralized, federated (FedAvg, FedProx, FedBN, FedPer, SCAFFOLD)
 **CSV format:** NASA POWER hourly data (YEAR, MO, DY, HR, WS10M)
 **Prediction lengths:** 1, 3, 6, 36, 72, 144, 432 steps
     """,
@@ -67,7 +69,6 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://localhost:3001",
         "http://localhost:5173",
         "*",
     ],
@@ -85,6 +86,7 @@ app.include_router(health_router, tags=["Health"])
 app.include_router(upload_router, tags=["Upload"])
 app.include_router(train_router, tags=["Training"])
 app.include_router(federated_router, tags=["Federated"])
+app.include_router(feedback_router, tags=["Feedback"])
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +98,7 @@ async def startup_event():
     import os
     os.makedirs("uploads", exist_ok=True)
     os.makedirs("models", exist_ok=True)
+    os.makedirs("feedback", exist_ok=True)
 
     print()
     print("=" * 56)
@@ -107,6 +110,7 @@ async def startup_event():
     print("  GET  /api/files          List files")
     print("  DELETE /api/files/{fn}   Delete file")
     print("  POST /api/train          Start training")
+    print("  POST /api/feedback       Submit feedback")
     print("  GET  /health             Health check")
     print("=" * 56)
     print()

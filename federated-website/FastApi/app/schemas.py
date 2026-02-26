@@ -39,6 +39,14 @@ VALID_PREDICTION_LENGTHS = [1, 3, 6, 36, 72, 144, 432]
 # Request schemas  (Frontend -> FastAPI)
 # ---------------------------------------------------------------------------
 
+class FederatedAlgorithm(str, Enum):
+    FEDAVG = "FedAvg"
+    FEDPROX = "FedProx"
+    FEDBN = "FedBN"
+    FEDPER = "FedPer"
+    SCAFFOLD = "SCAFFOLD"
+
+
 class TrainingConfig(BaseModel):
     """
     Training configuration sent alongside file upload.
@@ -61,6 +69,17 @@ class TrainingConfig(BaseModel):
     mode: TrainingMode = Field(
         default=TrainingMode.CENTRALIZED,
         description="centralized or federated",
+    )
+    # Federated-only fields (ignored in centralized mode)
+    federated_algorithm: FederatedAlgorithm = Field(
+        default=FederatedAlgorithm.FEDAVG,
+        description="Federated aggregation algorithm",
+    )
+    num_clients: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+        description="Number of participating federated clients",
     )
 
 
@@ -178,3 +197,42 @@ class TrainingOutput(BaseModel):
     training_time_seconds: float
     predictions: List[float]
     actuals: Optional[List[float]] = None
+
+
+class FederatedTrainingInput(BaseModel):
+    """
+    Structured input passed from the service layer to the
+    federated training module.  Mirrors TrainingInput but adds
+    federated-specific parameters.
+    """
+    csv_path: str = Field(description="Absolute path to the saved CSV file")
+    model_name: str = Field(description="GPT4TS | LLAMA | BERT | BART")
+    prediction_length: int = Field(description="Forecast horizon (steps)")
+    dropout_rate: float = Field(description="Dropout for regularization")
+    federated_algorithm: str = Field(
+        default="FedAvg",
+        description="FedAvg | FedProx | FedBN | FedPer | SCAFFOLD",
+    )
+    num_clients: int = Field(default=5, description="Number of federated clients")
+    # Defaults matching the training repo
+    seq_len: int = Field(default=336, description="Input sequence length")
+    batch_size: int = Field(default=32, description="Training batch size")
+    learning_rate: float = Field(default=0.0001, description="Learning rate")
+    rounds: int = Field(default=5, description="Federated communication rounds")
+
+
+class FederatedTrainingOutput(BaseModel):
+    """
+    Structured output returned by the federated training module.
+    Same shape as TrainingOutput so the service layer can handle
+    both modes uniformly.
+    """
+    mae: float
+    rmse: float
+    mape: Optional[float] = None
+    training_time_seconds: float
+    predictions: List[float]
+    actuals: Optional[List[float]] = None
+    best_round: Optional[int] = None
+    num_clients: Optional[int] = None
+    federated_algorithm: Optional[str] = None
