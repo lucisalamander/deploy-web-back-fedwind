@@ -930,60 +930,90 @@ export default function DashboardPage() {
         </StaggerContainer>
       </section>
 
-      {/* Feedback Section */}
+      {/* Feedback Section - Expanded Card */}
       <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
-        <div className="border-t border-border pt-8">
-          <div className="max-w-xl">
-            <div className="flex items-center gap-2 mb-4">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              <h3 className="text-sm font-medium text-muted-foreground">Leave Feedback</h3>
-            </div>
-            
-            {feedbackSent ? (
-              <div className="flex items-center gap-2 text-sm text-green-600 py-2">
-                <CheckCircle2 className="h-4 w-4" />
-                Thank you for your feedback!
+        <div className="rounded-lg border border-border bg-card p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <MessageSquare className="h-5 w-5 text-primary" />
+            <h3 className="text-lg font-semibold text-foreground">Send Us Feedback</h3>
+            <span className="text-xs text-muted-foreground ml-auto">Visible to creators only</span>
+          </div>
+
+          {feedbackSent ? (
+            <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-4">
+              <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+              <div>
+                <p className="font-medium text-green-900">Thank you for your feedback!</p>
+                <p className="text-sm text-green-700">We appreciate your input and will review it shortly.</p>
               </div>
-            ) : (
-              <div className="flex gap-2">
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-2">
+                  Your Name (optional)
+                </label>
                 <input
                   type="text"
                   value={feedbackName}
                   onChange={(e) => setFeedbackName(e.target.value)}
-                  placeholder="Name (optional)"
-                  className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  placeholder="Enter your name or leave blank for anonymous"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                 />
-                <input
-                  type="text"
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-2">
+                  Your Feedback
+                </label>
+                <textarea
                   value={feedbackMessage}
                   onChange={(e) => setFeedbackMessage(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && !sendingFeedback && feedbackMessage.trim()) {
+                    if (e.key === "Enter" && e.ctrlKey && !sendingFeedback && feedbackMessage.trim()) {
                       handleSubmitFeedback()
                     }
                   }}
-                  placeholder="Share your thoughts or suggestions..."
-                  className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  placeholder="Share your thoughts, suggestions, or report issues... (Ctrl+Enter to submit)"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 resize-vertical min-h-24"
                 />
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  {feedbackMessage.length} characters • Ctrl+Enter to submit
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2">
                 <Button
-                  size="sm"
-                  variant="ghost"
+                  variant="outline"
+                  onClick={() => {
+                    setFeedbackMessage("")
+                    setFeedbackName("")
+                  }}
+                  disabled={sendingFeedback}
+                  className="px-4"
+                >
+                  Clear
+                </Button>
+                <Button
                   onClick={handleSubmitFeedback}
                   disabled={sendingFeedback || !feedbackMessage.trim()}
-                  className="gap-1.5 px-3"
+                  className="gap-2 px-4"
                 >
                   {sendingFeedback ? (
-                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                      Sending...
+                    </>
                   ) : (
-                    <Send className="h-3.5 w-3.5" />
+                    <>
+                      <Send className="h-4 w-4" />
+                      Send Feedback
+                    </>
                   )}
                 </Button>
               </div>
-            )}
-            <p className="text-xs text-muted-foreground mt-2">
-              Your feedback helps us improve. Visible to creators only.
-            </p>
-          </div>
+            </div>
+          )}
         </div>
       </section>
     </PageLayout>
