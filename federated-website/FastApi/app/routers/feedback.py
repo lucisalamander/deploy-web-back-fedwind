@@ -21,7 +21,7 @@ FEEDBACK_FILE = "feedback/user_feedback.jsonl"
 
 class FeedbackCreate(BaseModel):
     """Schema for creating a feedback entry."""
-    message: str = Field(..., min_length=1, max_length=1000, description="Feedback message")
+    message: str = Field(..., min_length=1, max_length=10000, description="Feedback message")
     name: Optional[str] = Field(None, max_length=100, description="Optional name")
     context: Optional[str] = Field(None, max_length=200, description="Context (e.g., page, feature)")
 
