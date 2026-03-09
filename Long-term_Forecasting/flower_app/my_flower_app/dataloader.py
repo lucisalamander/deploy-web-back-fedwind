@@ -10,6 +10,9 @@ from torch.utils.data import random_split, DataLoader
 import warnings
 from pathlib import Path
 import sys
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+_PATH_LOGGED = False
 
 # Ensure local utils/ is imported before any similarly-named packages on PYTHONPATH.
 _project_root = Path(__file__).resolve().parents[2]
@@ -97,8 +100,8 @@ def get_chunked_dataset(files_to_process, chunk_size):
     Reads multiple CSVs, breaks each into chunks of a specified size,
     and combines all chunks into a single new file.
     """
-    print("--- Starting Chunk Extraction and Combination Script ---")
-    print(f"Chunk size set to: {chunk_size} rows\n")
+    logging.info("--- Starting Chunk Extraction and Combination Script ---")
+    logging.info(f"Chunk size set to: {chunk_size} rows\n")
 
     # This list will hold all the small DataFrame chunks from all files
     all_chunks = []
@@ -112,7 +115,7 @@ def get_chunked_dataset(files_to_process, chunk_size):
         files_to_process[i] = preprocess_nasa_data(files_to_process[i])
         num_chunks = min(num_chunks, len(files_to_process[i]) // chunk_size)
         if num_chunks == 0:
-            print(f"   -> Not enough data for even one chunk. Skipping.")
+            logging.info(f"   -> Not enough data for even one chunk. Skipping.")
 
     # Loop through and extract each chunk
     for i in range(num_chunks):
@@ -124,10 +127,10 @@ def get_chunked_dataset(files_to_process, chunk_size):
 
     # --- Step 3: Combine all collected chunks and save ---
     if not all_chunks:
-        print("\n❌ No chunks were extracted from any file. No output file will be created.")
+        logging.info("\n❌ No chunks were extracted from any file. No output file will be created.")
         return
 
-    print(f"\n--- Combining all {len(all_chunks)} extracted chunks... ---")
+    logging.info(f"\n--- Combining all {len(all_chunks)} extracted chunks... ---")
 
     # 'ignore_index=True' creates a new clean index for the combined file
     combined_df = pd.concat(all_chunks, ignore_index=True)
@@ -143,8 +146,8 @@ class Dataset_Custom(Dataset):
         # size [seq_len, label_len, pred_len]
         # info
         data_path = data_path[0] if isinstance(data_path, list) else data_path
-        print("Dataset_Custom: dataset_name = {}".format(dataset_name))
-        print("Dataset_Custom: data_path = {}".format(data_path))
+        logging.info("Dataset_Custom: dataset_name = {}".format(dataset_name))
+        logging.info("Dataset_Custom: data_path = {}".format(data_path))
         if size == None:
             self.seq_len = 24 * 4 * 4
             self.label_len = 24 * 4
@@ -221,7 +224,7 @@ class Dataset_Custom(Dataset):
         cols.remove(self.target)
         cols.remove('date')
         df_raw = df_raw[['date'] + cols + [self.target]]
-        # print(cols)
+        # logging.info(cols)
         num_train = int(len(df_raw) * 0.7)
         num_test = int(len(df_raw) * 0.2)
         num_vali = len(df_raw) - num_train - num_test

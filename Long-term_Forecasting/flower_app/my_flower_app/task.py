@@ -31,6 +31,19 @@ DATASET_REGISTRY = {
             4: "Station_005",
         },
     },
+    "KZMET": {
+        "folder": "datasets/custom",
+        "files": ["nasa_almaty.csv", "nasa_zhezkazgan.csv", "nasa_aktau.csv", "nasa_taraz.csv", "nasa_aktobe.csv"],
+        "target": "WS50M",
+        "num_clients": 5,
+        "client_names": {
+            0: "Almaty",
+            1: "Zhezkazgan",
+            2: "Aktau",
+            3: "Taraz",
+            4: "Aktobe",
+        },
+    },
 }
 
 
