@@ -56,3 +56,10 @@ MD_FILES/
 node_modules/
 
 old_experiments/
+experiments*/
+analysis_outputs*/
+Long-term_Forecasting/flower_app/configs
+
+CLAUDE.md
+program.md
+auto_results.tsv

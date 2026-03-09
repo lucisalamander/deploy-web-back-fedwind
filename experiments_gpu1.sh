@@ -27,8 +27,11 @@ declare -a NUM_CLIENTS=(5)
 # ============================================================================
 # STRATEGY & OPTIMIZATION PARAMETERS
 # ============================================================================
-declare -a STRATEGY=(fedavg)
-declare -a PROXIMAL_MU=(0.01)
+# HP SENSITIVITY: FedProx proximal_mu sweep
+# Baseline (mu=0.01) already done: mse=0.5179 at pred=72
+# Sweeping mu={0.001, 0.01, 0.1} to find optimal regularization strength
+declare -a STRATEGY=(fedprox)
+declare -a PROXIMAL_MU=(0.001 0.01 0.1)
 declare -a WARMUP_ROUNDS=(1)
 declare -a WEIGHT_DECAY=(0.01)
 declare -a EARLY_STOPPING=(true)
@@ -39,7 +42,7 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 declare -a MODEL=(llama_nonlinear)
 declare -a SEQ_LEN=(336)
-declare -a PRED_LEN=(1 72 432)
+declare -a PRED_LEN=(72)
 declare -a LABEL_LEN=(48)
 declare -a PATCH_SIZE=(16)
 declare -a STRIDE=(16)

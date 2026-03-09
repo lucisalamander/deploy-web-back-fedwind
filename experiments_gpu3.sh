@@ -19,7 +19,10 @@ declare -a TARGET_COLUMN=(Vavg80\ \[m/s\])
 # ============================================================================
 declare -a NUM_ROUNDS=(15)
 declare -a FRACTION_TRAIN=(1.0)
-declare -a LOCAL_EPOCHS=(1)
+# HP SENSITIVITY: FedPer local_epochs sweep
+# Baseline (local_epochs=1) already done: mse=0.5120 at pred=72
+# Sweeping local_epochs={1,2,3} — more local adaptation of personalized output head
+declare -a LOCAL_EPOCHS=(1 2 3)
 declare -a LEARNING_RATE=(0.001)
 declare -a BATCH_SIZE=(32)
 declare -a NUM_CLIENTS=(5)
@@ -27,7 +30,7 @@ declare -a NUM_CLIENTS=(5)
 # ============================================================================
 # STRATEGY & OPTIMIZATION PARAMETERS
 # ============================================================================
-declare -a STRATEGY=(fedavg)
+declare -a STRATEGY=(fedper)
 declare -a PROXIMAL_MU=(0.01)
 declare -a WARMUP_ROUNDS=(1)
 declare -a WEIGHT_DECAY=(0.01)
@@ -37,9 +40,9 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 # MODEL ARCHITECTURE PARAMETERS
 # ============================================================================
-declare -a MODEL=(bart_nonlinear)
+declare -a MODEL=(llama_nonlinear)
 declare -a SEQ_LEN=(336)
-declare -a PRED_LEN=(1 72 432)
+declare -a PRED_LEN=(72)
 declare -a LABEL_LEN=(48)
 declare -a PATCH_SIZE=(16)
 declare -a STRIDE=(16)
