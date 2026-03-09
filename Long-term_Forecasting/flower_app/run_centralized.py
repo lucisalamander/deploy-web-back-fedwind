@@ -58,8 +58,8 @@ DEFAULTS = {
     "early_stop_patience": 5,
     "seq_len": 336,
     "pred_len": 120,
-    "patch_size": 4,
-    "stride": 1,
+    "patch_size": 16,
+    "stride": 16,
     "d_model": 768,
     "hidden_size": 16,
     "kernel_size": 3,
@@ -411,6 +411,9 @@ def main():
 
     num_completed = len(results)
     num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    num_total_params = sum(p.numel() for p in model.parameters())
+    model_size_mb = sum(p.numel() * p.element_size() for p in model.parameters()) / (1024 * 1024)
+
 
     pd.DataFrame(
         [
@@ -422,6 +425,8 @@ def main():
                 "local_epochs": cfg["local_epochs"],
                 "num_clients": num_cities,
                 "num_trainable_params": num_trainable_params,
+                "num_total_params": num_total_params,
+                "model_size_mb": model_size_mb,
                 "lora_r": cfg["lora_r"],
                 "lora_alpha": cfg["lora_alpha"],
                 "patch_size": cfg["patch_size"],
