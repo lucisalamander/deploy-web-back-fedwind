@@ -65,7 +65,7 @@ declare -a DATASET_NAME=(KZMET)
 # ============================================================================
 declare -a NUM_ROUNDS=(25)
 declare -a LOCAL_EPOCHS=(1)
-declare -a LEARNING_RATE=(0.0005 0.0003 0.001)
+declare -a LEARNING_RATE=(0.0005)
 declare -a BATCH_SIZE=(32)
 declare -a WARMUP_ROUNDS=(1)
 declare -a WEIGHT_DECAY=(0.01)
@@ -74,7 +74,7 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 # MODEL ARCHITECTURE PARAMETERS
 # ============================================================================
-declare -a MODEL=(gpt4ts_nonlinear)
+declare -a MODEL=(llama_nonlinear bert_nonlinear bart_nonlinear)
 declare -a SEQ_LEN=(336)
 declare -a PRED_LEN=(432)
 declare -a PATCH_SIZE=(16)
