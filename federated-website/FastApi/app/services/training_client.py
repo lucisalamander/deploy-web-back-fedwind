@@ -106,7 +106,9 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     except subprocess.TimeoutExpired:
         logger.warning("  ⚠ torch check timed out — proceeding anyway")
 
-    exp_dir = tempfile.mkdtemp(prefix="centralized_web_")
+    exp_base = os.environ.get("CENTRALIZED_WEB_DIR", "/raid/tin_trungchau/tmp")
+    os.makedirs(exp_base, exist_ok=True)
+    exp_dir = tempfile.mkdtemp(prefix="centralized_web_", dir=exp_base)
     logger.info(f"[STEP 3] Experiment directory created: {exp_dir}")
 
     internal_model = MODEL_NAME_MAP.get(inp.model_name, inp.model_name.lower())
