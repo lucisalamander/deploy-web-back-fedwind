@@ -171,11 +171,11 @@ def build_row(exp_dir: Path, columns: List[str]) -> Dict[str, Any]:
     # target_column comes from DATASET_REGISTRY, not config
     ds_name = row.get("dataset_name")
     if ds_name:
-    try:
-        ds_cfg = DATASET_REGISTRY.get(ds_name.upper(), {})
-        row["target_column"] = ds_cfg.get("target")
-    except Exception:
-        pass
+        try:
+            ds_cfg = DATASET_REGISTRY.get(ds_name.upper(), {})
+            row["target_column"] = ds_cfg.get("target")
+        except Exception:
+            pass
     if row.get("seq_len") is not None and row.get("patch_size") is not None and row.get("stride") is not None:
         row["num_patches"] = (row["seq_len"] - row["patch_size"]) // row["stride"] + 2
 
