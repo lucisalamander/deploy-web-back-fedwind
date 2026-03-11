@@ -14,6 +14,8 @@ from typing import Optional
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException
 
+from app.services.telegram_service import send_telegram_message
+
 router = APIRouter(prefix="/api/feedback", tags=["Feedback"])
 
 FEEDBACK_FILE = "feedback/user_feedback.jsonl"
@@ -79,6 +81,20 @@ async def submit_feedback(feedback: FeedbackCreate):
     # Append to JSONL file
     with open(FEEDBACK_FILE, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry.model_dump()) + "\n")
+
+    telegram_text = (
+        f"📩 New Feedback\n\n"
+        f"🆔 ID: {entry.id}\n"
+        f"👤 Name: {entry.name or 'Anonymous'}\n"
+        f"📍 Context: {entry.context or 'No context'}\n"
+        f"🕒 Created At: {entry.created_at}\n\n"
+        f"💬 Message:\n{entry.message}"
+    )   
+
+    try:
+        send_telegram_message(telegram_text)
+    except Exception as e:
+        print(f"Failed to send feedback to Telegram: {e}")
     
     return FeedbackResponse(
         success=True,

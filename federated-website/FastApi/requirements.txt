@@ -23,3 +23,8 @@ pydantic>=2.0.0
 # Development/Testing (optional)
 # pytest>=7.0.0
 # httpx>=0.25.0  # For testing async endpoints
+
+#FastAPI/Python does not automatically read .env by itself unless you use a helper package, pip install python-dotenv and pip install python-dotenv requests
+python-dotenv
+#pip install requests
+requests

@@ -14,6 +14,7 @@ fastapi/
 ├── requirements.txt                 # Python dependencies
 ├── uploads/                         # Uploaded CSV files (auto-created)
 ├── models/                          # Saved model weights (auto-created)
+├── feedback/                        # Saved feedback entries (auto-created)
 └── app/
     ├── __init__.py
     ├── schemas.py                   # All Pydantic models (request/response)
@@ -22,11 +23,13 @@ fastapi/
     │   ├── health.py                # GET  /health
     │   ├── upload.py                # POST /api/upload, GET/DELETE /api/files
     │   ├── train.py                 # POST /api/train
-    │   └── federated.py             # Federated learning endpoints
+    │   ├── federated.py             # Federated learning endpoints
+    │   └── feedback.py              # POST /api/feedback
     └── services/
         ├── __init__.py
         ├── training_service.py      # Orchestration: validate -> build input -> call client
-        └── training_client.py       # Bridge to external training repo (STUB)
+        ├── training_client.py       # Bridge to external training repo (STUB)
+        └── telegram_service.py      # Sends developer feedback to Telegram group
 ```
 
 ---
@@ -68,13 +71,38 @@ Frontend receives:
 
 ## API Endpoints
 
-| Method | Endpoint              | Description                      |
-|--------|-----------------------|----------------------------------|
-| GET    | `/health`             | Health check                     |
-| POST   | `/api/upload`         | Upload a CSV file                |
-| GET    | `/api/files`          | List uploaded files              |
-| DELETE | `/api/files/{name}`   | Delete a file                    |
-| POST   | `/api/train`          | Start centralized training       |
+| Method | Endpoint              | Description                       |
+|--------|-----------------------|-----------------------------------|
+| GET    | `/health`             | Health check                      |
+| POST   | `/api/upload`         | Upload a CSV file                 |
+| GET    | `/api/files`          | List uploaded files               |
+| DELETE | `/api/files/{name}`   | Delete a file                     |
+| POST   | `/api/train`          | Start centralized training        |
+| POST   | `/api/feedback`       | Submit user feedback to developers|
+
+---
+
+## Feedback and Telegram Notifications
+
+The backend supports user feedback submission from the frontend dashboard.
+
+When a user submits feedback:
+
+1. The backend accepts the request at `POST /api/feedback`
+2. The feedback is saved locally in `feedback/user_feedback.jsonl`
+3. The same message is forwarded to a Telegram developer/support group
+
+This is used for lightweight developer-visible feedback and issue reporting from the website UI.
+
+---
+
+## Environment Variables
+
+Create a `.env` file in the `fastapi/` root directory with:
+
+```env
+BOT_TOKEN=your_telegram_bot_token
+SUPPORT_CHAT_ID=your_telegram_group_chat_id
 
 ---
 

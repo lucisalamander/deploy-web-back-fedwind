@@ -132,7 +132,7 @@ export default function DashboardPage() {
       await submitFeedback(
         feedbackMessage.trim(),
         feedbackName.trim() || undefined,
-        "dashboard"
+        "dashboard",
       )
       setFeedbackMessage("")
       setFeedbackName("")
@@ -170,7 +170,7 @@ export default function DashboardPage() {
   }
 
   // Check API connection on mount
-  useEffect(() => {
+  useEffect(() => {  
     const checkApiConnection = async () => {
       try {
         const connected = await testConnection()
@@ -936,7 +936,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 mb-6">
             <MessageSquare className="h-5 w-5 text-primary" />
             <h3 className="text-lg font-semibold text-foreground">Send Us Feedback</h3>
-            <span className="text-xs text-muted-foreground ml-auto">Visible to creators only</span>
+            <span className="text-xs text-muted-foreground ml-auto">Visible to developers only</span>
           </div>
 
           {feedbackSent ? (
