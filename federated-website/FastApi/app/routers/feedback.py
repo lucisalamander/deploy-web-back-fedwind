@@ -86,7 +86,6 @@ async def submit_feedback(feedback: FeedbackCreate):
         f"📩 New Feedback\n\n"
         f"🆔 ID: {entry.id}\n"
         f"👤 Name: {entry.name or 'Anonymous'}\n"
-        f"📍 Context: {entry.context or 'No context'}\n"
         f"🕒 Created At: {entry.created_at}\n\n"
         f"💬 Message:\n{entry.message}"
     )   

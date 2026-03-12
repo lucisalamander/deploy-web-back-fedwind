@@ -103,7 +103,7 @@ Create a `.env` file in the `fastapi/` root directory with:
 ```env
 BOT_TOKEN=your_telegram_bot_token
 SUPPORT_CHAT_ID=your_telegram_group_chat_id
-
+```
 ---
 
 ## Quick Start
