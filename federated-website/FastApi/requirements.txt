@@ -26,5 +26,5 @@ pydantic>=2.0.0
 
 #FastAPI/Python does not automatically read .env by itself unless you use a helper package, pip install python-dotenv and pip install python-dotenv requests
 python-dotenv
-#pip install requests
+#pip install requests (Telegram HTTP requests)
 requests

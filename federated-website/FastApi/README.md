@@ -82,18 +82,27 @@ Frontend receives:
 
 ---
 
-## Feedback and Telegram Notifications
+## Telegram Feedback Reply Flow
 
-The backend supports user feedback submission from the frontend dashboard.
+The project supports this full feedback flow:
 
-When a user submits feedback:
+1. A user sends a question from the website
+2. The backend saves it in `feedback/user_feedback.jsonl`
+3. The backend forwards it to the Telegram developer/support group
+4. A developer replies in Telegram
+5. The backend saves that reply as the official answer
+6. The answer appears in the website's `Recent Answers` section
 
-1. The backend accepts the request at `POST /api/feedback`
-2. The feedback is saved locally in `feedback/user_feedback.jsonl`
-3. The same message is forwarded to a Telegram developer/support group
+### How developers should answer in Telegram
 
-This is used for lightweight developer-visible feedback and issue reporting from the website UI.
+When the bot posts a new website question in the Telegram group:
 
+- You must use Telegram's **Reply** feature on that exact bot message
+- Your reply must start with `ANSWER:`
+
+Example:
+
+ANSWER: Please upload one CSV file at a time.
 ---
 
 ## Environment Variables
