@@ -31,14 +31,20 @@ TRAINING_REPO_ROOT = os.path.abspath(
 RUN_SCRIPT = os.path.join(TRAINING_REPO_ROOT, "run_centralized.py")
 TRAINING_PYTHON = os.environ.get(
     "TRAINING_PYTHON",
-    "/raid/tin_trungchau/conda_env/envs/flwr39/bin/python"
+    "/raid/tin_trungchau/conda_envs/flwr39/bin/python"
 )
 
 MODEL_NAME_MAP = {
     "GPT4TS": "gpt4ts_nonlinear",
-    "LLAMA": "llama",
-    "BERT": "bert",
-    "BART": "bart",
+    "GPT4TS_LINEAR": "gpt4ts_linear",
+    "LLAMA": "llama_nonlinear",      
+    "LLAMA_LINEAR": "llama_linear",
+    "BERT": "bert_nonlinear",       
+    "BERT_LINEAR": "bert_linear",
+    "BART": "bart_nonlinear",        
+    "BART_LINEAR": "bart_linear",
+    "INFORMER": "informer",
+    "PATCHTST": "patchtst",
 }
 
 

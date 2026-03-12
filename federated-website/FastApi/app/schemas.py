@@ -22,9 +22,15 @@ from enum import Enum
 
 class TrainingModelName(str, Enum):
     GPT4TS = "GPT4TS"
+    GPT4TS_LINEAR = "GPT4TS_LINEAR"
     LLAMA = "LLAMA"
+    LLAMA_LINEAR = "LLAMA_LINEAR"
     BERT = "BERT"
+    BERT_LINEAR = "BERT_LINEAR"
     BART = "BART"
+    BART_LINEAR = "BART_LINEAR"
+    INFORMER = "INFORMER"
+    PATCHTST = "PATCHTST"
 
 
 class TrainingMode(str, Enum):

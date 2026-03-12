@@ -1661,10 +1661,12 @@ export default function DashboardPage() {
                       <SelectValue placeholder="Select model" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="GPT4TS">GPT4TS - GPT-based Time Series</SelectItem>
-                      <SelectItem value="LLAMA">LLAMA - LLaMA Language Model</SelectItem>
-                      <SelectItem value="BERT">BERT - Bidirectional Encoder</SelectItem>
-                      <SelectItem value="BART">BART - Denoising Autoencoder</SelectItem>
+                    <SelectItem value="GPT4TS">GPT4TS (Nonlinear)</SelectItem>
+                    <SelectItem value="LLAMA">LLaMA (Nonlinear)</SelectItem>
+                    <SelectItem value="BERT">BERT (Nonlinear)</SelectItem>
+                    <SelectItem value="BART">BART (Nonlinear)</SelectItem>
+                    <SelectItem value="INFORMER">Informer</SelectItem>
+                    <SelectItem value="PATCHTST">PatchTST</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">Selected: {trainingModel}</p>
