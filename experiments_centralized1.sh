@@ -76,7 +76,7 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 declare -a MODEL=(llama_nonlinear bart_nonlinear bert_nonlinear)
 declare -a SEQ_LEN=(336)
-declare -a PRED_LEN=(1 72)
+declare -a PRED_LEN=(1)
 declare -a PATCH_SIZE=(16)
 declare -a STRIDE=(16)
 declare -a D_MODEL=(768)

@@ -11,8 +11,8 @@
 # ============================================================================
 # DATASET PARAMETERS
 # ============================================================================
-declare -a DATASET_NAME=(VNMET)
-declare -a TARGET_COLUMN=(Vavg80\ \[m/s\])
+declare -a DATASET_NAME=(KZMET)
+declare -a TARGET_COLUMN=(WS50M)
 
 # ============================================================================
 # FEDERATED LEARNING PARAMETERS
@@ -30,7 +30,7 @@ declare -a NUM_CLIENTS=(5)
 # ============================================================================
 # STRATEGY & OPTIMIZATION PARAMETERS
 # ============================================================================
-declare -a STRATEGY=(fedln)
+declare -a STRATEGY=(fedavg)
 declare -a PROXIMAL_MU=(0.01)
 declare -a WARMUP_ROUNDS=(1)
 declare -a WEIGHT_DECAY=(0.01)
@@ -40,16 +40,16 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 # MODEL ARCHITECTURE PARAMETERS
 # ============================================================================
-declare -a MODEL=(llama_nonlinear)
+declare -a MODEL=(gpt4ts_nonlinear)
 declare -a SEQ_LEN=(336)
 declare -a PRED_LEN=(72)
 declare -a LABEL_LEN=(48)
 declare -a PATCH_SIZE=(16)
 declare -a STRIDE=(16)
 declare -a D_MODEL=(768)
-declare -a HIDDEN_SIZE=(16)
-declare -a KERNEL_SIZE=(3)
-declare -a LLM_LAYERS=(4)
+declare -a HIDDEN_SIZE=(32)
+declare -a KERNEL_SIZE=(1 3 5)
+declare -a LLM_LAYERS=(3 4 6)
 declare -a ENC_IN=(1)
 declare -a DEC_IN=(1)
 declare -a C_OUT=(1)
