@@ -31,7 +31,7 @@ TRAINING_REPO_ROOT = os.path.abspath(
 RUN_SCRIPT = os.path.join(TRAINING_REPO_ROOT, "run_centralized.py")
 TRAINING_PYTHON = os.environ.get(
     "TRAINING_PYTHON",
-    "/raid/tin_trungchau/conda_envs/flwr39/bin/python"
+    "/home/tin_trungchau/miniconda3/envs/flwr39/bin/python"
 )
 
 MODEL_NAME_MAP = {
@@ -121,16 +121,22 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     logger.info(f"[STEP 4] Model mapping: {inp.model_name} -> {internal_model}")
 
     cmd = [
-        TRAINING_PYTHON,
-        RUN_SCRIPT,
-        "--exp-dir", exp_dir,
-        "--rounds", str(inp.epochs),
-        "--pred-len", str(inp.prediction_length),
-        "--lr", str(inp.learning_rate),
-        "--batch-size", str(inp.batch_size),
-        "--seq-len", str(inp.seq_len),
-        "--dropout", str(inp.dropout_rate),
-        "--model", internal_model,
+        "bash", "-c",
+        "source /home/tin_trungchau/miniconda3/etc/profile.d/conda.sh && "
+        "conda activate flwr39 && "
+        # Pick the GPU with most free memory (same as experiments_centralized1.sh)
+        "export CUDA_VISIBLE_DEVICES=$(nvidia-smi --query-gpu=index,memory.used "
+        "--format=csv,noheader,nounits | sort -t',' -k2 -n | head -1 | cut -d',' -f1 | tr -d ' ') && "
+        "echo \"Selected GPU: $CUDA_VISIBLE_DEVICES\" && "
+        f"python {RUN_SCRIPT} "
+        f"--exp-dir {exp_dir} "
+        f"--rounds {inp.epochs} "
+        f"--pred-len {inp.prediction_length} "
+        f"--lr {inp.learning_rate} "
+        f"--batch-size {inp.batch_size} "
+        f"--seq-len {inp.seq_len} "
+        f"--dropout {inp.dropout_rate} "
+        f"--model {internal_model}"
     ]
 
     env = os.environ.copy()
@@ -138,6 +144,7 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     env["PYTHONPATH"] = TRAINING_REPO_ROOT + (
         os.pathsep + existing_pypath if existing_pypath else ""
     )
+    env["CUDA_VISIBLE_DEVICES"] = os.environ.get("CUDA_VISIBLE_DEVICES", "0")  
 
     logger.info(f"[STEP 4] Full command:")
     logger.info(f"  {' '.join(cmd)}")
@@ -151,13 +158,14 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
 
     try:
         result = subprocess.run(
-            cmd,
-            cwd=TRAINING_REPO_ROOT,
-            capture_output=True,
-            text=True,
-            timeout=3600 * 6,
-            env=env,
-        )
+        cmd,
+        cwd=TRAINING_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=3600 * 6,
+        stdin=subprocess.DEVNULL,
+        # no env= needed, bash -c handles it
+    )
     except subprocess.TimeoutExpired:
         logger.error("[STEP 5] ✗ TIMEOUT — training exceeded 6 hours")
         raise RuntimeError("Training timed out after 6 hours")
