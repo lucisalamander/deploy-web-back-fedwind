@@ -315,13 +315,13 @@ def print_summary(df):
 
 if __name__ == "__main__":
     # Specify the path to your experiments folder
-    EXPERIMENTS_FOLDER = 'experiments_20251122'
+    EXPERIMENTS_FOLDER = '.'
 
     if not os.path.exists(EXPERIMENTS_FOLDER):
         print(f"Error: Folder '{EXPERIMENTS_FOLDER}' does not exist!")
     else:
         # Optional: Specify custom output file name
-        output_name = "combined_experiments_20251122.csv"
+        output_name = "combined_experiments_20260315_20260316.csv"
         if not output_name:
             output_name = "combined_experiments_20251122.csv"
         elif not output_name.endswith('.csv'):

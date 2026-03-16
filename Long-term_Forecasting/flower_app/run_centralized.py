@@ -64,6 +64,10 @@ DEFAULTS = {
     "hidden_size": 16,
     "kernel_size": 3,
     "llm_layers": 4,
+    "n_heads": 4,
+    "e_layers": 3,
+    "d_layers": 1,
+    "d_ff": 768,
     "lora_r": 8,
     "lora_alpha": 16,
     "lora_dropout": 0.15,
@@ -89,6 +93,10 @@ CONF_KEY_MAP = {
     "HIDDEN_SIZE": ("hidden_size", int),
     "KERNEL_SIZE": ("kernel_size", int),
     "LLM_LAYERS": ("llm_layers", int),
+    "N_HEADS": ("n_heads", int),
+    "E_LAYERS": ("e_layers", int),
+    "D_LAYERS": ("d_layers", int),
+    "D_FF": ("d_ff", int),
     "LORA_R": ("lora_r", int),
     "LORA_ALPHA": ("lora_alpha", int),
     "LORA_DROPOUT": ("lora_dropout", float),
@@ -131,6 +139,10 @@ def build_parser():
     p.add_argument("--hidden-size", type=int, default=None)
     p.add_argument("--kernel-size", type=int, default=None)
     p.add_argument("--llm-layers", type=int, default=None)
+    p.add_argument("--n-heads", type=int, default=None)
+    p.add_argument("--e-layers", type=int, default=None)
+    p.add_argument("--d-layers", type=int, default=None)
+    p.add_argument("--d-ff", type=int, default=None)
     p.add_argument("--lora-r", type=int, default=None)
     p.add_argument("--lora-alpha", type=int, default=None)
     p.add_argument("--lora-dropout", type=float, default=None)
@@ -311,6 +323,10 @@ def main():
         hidden_size=cfg["hidden_size"],
         kernel_size=cfg["kernel_size"],
         llm_layers=cfg["llm_layers"],
+        n_heads=cfg["n_heads"],
+        e_layers=cfg["e_layers"],
+        d_layers=cfg["d_layers"],
+        d_ff=cfg["d_ff"],
         lora_r=cfg["lora_r"],
         lora_alpha=cfg["lora_alpha"],
         lora_dropout=cfg["lora_dropout"],

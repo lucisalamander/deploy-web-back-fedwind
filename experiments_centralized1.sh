@@ -58,15 +58,15 @@ fi
 # ============================================================================
 # DATASET PARAMETERS
 # ============================================================================
-declare -a DATASET_NAME=(KZMET VNMET)
+declare -a DATASET_NAME=(VNMET)
 
 # ============================================================================
 # TRAINING PARAMETERS
 # ============================================================================
 declare -a NUM_ROUNDS=(25)
 declare -a LOCAL_EPOCHS=(1)
-declare -a LEARNING_RATE=(0.0005)
-declare -a BATCH_SIZE=(32)
+declare -a LEARNING_RATE=(0.0001)
+declare -a BATCH_SIZE=(512)
 declare -a WARMUP_ROUNDS=(1)
 declare -a WEIGHT_DECAY=(0.01)
 declare -a EARLY_STOP_PATIENCE=(5)
@@ -74,15 +74,19 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 # MODEL ARCHITECTURE PARAMETERS
 # ============================================================================
-declare -a MODEL=(llama_nonlinear bart_nonlinear bert_nonlinear)
+declare -a MODEL=(gpt4ts_nonlinear)
 declare -a SEQ_LEN=(336)
-declare -a PRED_LEN=(1)
-declare -a PATCH_SIZE=(16)
-declare -a STRIDE=(16)
+declare -a PRED_LEN=(72)
+declare -a PATCH_SIZE=(8)
+declare -a STRIDE=(4)
 declare -a D_MODEL=(768)
-declare -a HIDDEN_SIZE=(16)
-declare -a KERNEL_SIZE=(3)
-declare -a LLM_LAYERS=(4)
+declare -a HIDDEN_SIZE=(128)
+declare -a KERNEL_SIZE=(5)
+declare -a LLM_LAYERS=(6)
+declare -a N_HEADS=(4)
+declare -a E_LAYERS=(3)
+declare -a D_LAYERS=(1)
+declare -a D_FF=(768)
 declare -a LORA_R=(8)
 declare -a LORA_ALPHA=(16)
 declare -a LORA_DROPOUT=(0.0)
@@ -110,11 +114,19 @@ for dataset_name in "${DATASET_NAME[@]}"; do
                             for hidden_size in "${HIDDEN_SIZE[@]}"; do
                               for kernel_size in "${KERNEL_SIZE[@]}"; do
                                 for llm_layers in "${LLM_LAYERS[@]}"; do
-                                  for lora_r in "${LORA_R[@]}"; do
-                                    for lora_alpha in "${LORA_ALPHA[@]}"; do
-                                      for lora_dropout in "${LORA_DROPOUT[@]}"; do
-                                        for dropout in "${DROPOUT[@]}"; do
-                                          ((total++))
+                                  for n_heads in "${N_HEADS[@]}"; do
+                                    for e_layers in "${E_LAYERS[@]}"; do
+                                      for d_layers in "${D_LAYERS[@]}"; do
+                                        for d_ff in "${D_FF[@]}"; do
+                                          for lora_r in "${LORA_R[@]}"; do
+                                            for lora_alpha in "${LORA_ALPHA[@]}"; do
+                                              for lora_dropout in "${LORA_DROPOUT[@]}"; do
+                                                for dropout in "${DROPOUT[@]}"; do
+                                                  ((total++))
+                                                done
+                                              done
+                                            done
+                                          done
                                         done
                                       done
                                     done
@@ -158,48 +170,60 @@ for dataset_name in "${DATASET_NAME[@]}"; do
                             for hidden_size in "${HIDDEN_SIZE[@]}"; do
                               for kernel_size in "${KERNEL_SIZE[@]}"; do
                                 for llm_layers in "${LLM_LAYERS[@]}"; do
-                                  for lora_r in "${LORA_R[@]}"; do
-                                    for lora_alpha in "${LORA_ALPHA[@]}"; do
-                                      for lora_dropout in "${LORA_DROPOUT[@]}"; do
-                                        for dropout in "${DROPOUT[@]}"; do
-                                          ((current++))
+                                  for n_heads in "${N_HEADS[@]}"; do
+                                    for e_layers in "${E_LAYERS[@]}"; do
+                                      for d_layers in "${D_LAYERS[@]}"; do
+                                        for d_ff in "${D_FF[@]}"; do
+                                          for lora_r in "${LORA_R[@]}"; do
+                                            for lora_alpha in "${LORA_ALPHA[@]}"; do
+                                              for lora_dropout in "${LORA_DROPOUT[@]}"; do
+                                                for dropout in "${DROPOUT[@]}"; do
+                                                  ((current++))
 
-                                          echo ""
-                                          echo "[$current/$total] Running centralized experiment:"
-                                          echo "  Dataset: $dataset_name"
-                                          echo "  Training: rounds=$num_rounds, lr=$lr, epochs=$local_epochs"
-                                          echo "  Model: $model, pred_len=$pred_len, llm_layers=$llm_layers"
-                                          echo "  Arch: patch_size=$patch_size, stride=$stride, dropout=$dropout"
-                                          echo "=================================="
+                                                  echo ""
+                                                  echo "[$current/$total] Running centralized experiment:"
+                                                  echo "  Dataset: $dataset_name"
+                                                  echo "  Training: rounds=$num_rounds, lr=$lr, epochs=$local_epochs"
+                                                  echo "  Model: $model, pred_len=$pred_len, llm_layers=$llm_layers"
+                                                  echo "  Arch: patch_size=$patch_size, stride=$stride, dropout=$dropout"
+                                                  echo "=================================="
 
-                                          python Long-term_Forecasting/flower_app/run_centralized.py \
-                                            --dataset-name "$dataset_name" \
-                                            --model "$model" \
-                                            --rounds "$num_rounds" \
-                                            --local-epochs "$local_epochs" \
-                                            --lr "$lr" \
-                                            --batch-size "$batch_size" \
-                                            --warmup-rounds "$warmup_rounds" \
-                                            --weight-decay "$weight_decay" \
-                                            --early-stop-patience "$early_stop_patience" \
-                                            --seq-len "$seq_len" \
-                                            --pred-len "$pred_len" \
-                                            --patch-size "$patch_size" \
-                                            --stride "$stride" \
-                                            --d-model "$d_model" \
-                                            --hidden-size "$hidden_size" \
-                                            --kernel-size "$kernel_size" \
-                                            --llm-layers "$llm_layers" \
-                                            --lora-r "$lora_r" \
-                                            --lora-alpha "$lora_alpha" \
-                                            --lora-dropout "$lora_dropout" \
-                                            --dropout "$dropout"
+                                                  python Long-term_Forecasting/flower_app/run_centralized.py \
+                                                    --dataset-name "$dataset_name" \
+                                                    --model "$model" \
+                                                    --rounds "$num_rounds" \
+                                                    --local-epochs "$local_epochs" \
+                                                    --lr "$lr" \
+                                                    --batch-size "$batch_size" \
+                                                    --warmup-rounds "$warmup_rounds" \
+                                                    --weight-decay "$weight_decay" \
+                                                    --early-stop-patience "$early_stop_patience" \
+                                                    --seq-len "$seq_len" \
+                                                    --pred-len "$pred_len" \
+                                                    --patch-size "$patch_size" \
+                                                    --stride "$stride" \
+                                                    --d-model "$d_model" \
+                                                    --hidden-size "$hidden_size" \
+                                                    --kernel-size "$kernel_size" \
+                                                    --llm-layers "$llm_layers" \
+                                                    --n-heads "$n_heads" \
+                                                    --e-layers "$e_layers" \
+                                                    --d-layers "$d_layers" \
+                                                    --d-ff "$d_ff" \
+                                                    --lora-r "$lora_r" \
+                                                    --lora-alpha "$lora_alpha" \
+                                                    --lora-dropout "$lora_dropout" \
+                                                    --dropout "$dropout"
 
-                                          if [ $? -eq 0 ]; then
-                                            echo "✓ Experiment $current completed successfully"
-                                          else
-                                            echo "✗ Experiment $current failed with exit code $?"
-                                          fi
+                                                  if [ $? -eq 0 ]; then
+                                                    echo "✓ Experiment $current completed successfully"
+                                                  else
+                                                    echo "✗ Experiment $current failed with exit code $?"
+                                                  fi
+                                                done
+                                              done
+                                            done
+                                          done
                                         done
                                       done
                                     done
