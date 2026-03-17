@@ -11,8 +11,8 @@
 # ============================================================================
 # DATASET PARAMETERS
 # ============================================================================
-declare -a DATASET_NAME=(KZMET)
-declare -a TARGET_COLUMN=(WS50M)
+declare -a DATASET_NAME=(VNMET)
+declare -a TARGET_COLUMN=("Vavg80 [m/s]")
 
 # ============================================================================
 # FEDERATED LEARNING PARAMETERS
@@ -21,7 +21,7 @@ declare -a NUM_ROUNDS=(15)
 declare -a FRACTION_TRAIN=(1.0)
 declare -a LOCAL_EPOCHS=(1)
 declare -a LEARNING_RATE=(0.0001)
-declare -a BATCH_SIZE=(512)
+declare -a BATCH_SIZE=(32)
 declare -a NUM_CLIENTS=(5)
 
 # ============================================================================
@@ -30,8 +30,8 @@ declare -a NUM_CLIENTS=(5)
 # HP SENSITIVITY: FedProx proximal_mu sweep
 # Baseline (mu=0.01) already done: mse=0.5179 at pred=72
 # Sweeping mu={0.001, 0.01, 0.1} to find optimal regularization strength
-declare -a STRATEGY=(fedavg)
-declare -a PROXIMAL_MU=(0.001 0.01 0.1)
+declare -a STRATEGY=(fedprox)
+declare -a PROXIMAL_MU=(0.01)
 declare -a WARMUP_ROUNDS=(1)
 declare -a WEIGHT_DECAY=(0.01)
 declare -a EARLY_STOPPING=(true)
@@ -40,16 +40,16 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 # MODEL ARCHITECTURE PARAMETERS
 # ============================================================================
-declare -a MODEL=(gpt4ts_nonlinear)
+declare -a MODEL=(gpt4ts_nonlinear_attnres)
 declare -a SEQ_LEN=(336)
-declare -a PRED_LEN=(72)
+declare -a PRED_LEN=(1 72 432)
 declare -a LABEL_LEN=(24)
-declare -a PATCH_SIZE=(8)
-declare -a STRIDE=(4)
+declare -a PATCH_SIZE=(16)
+declare -a STRIDE=(16)
 declare -a D_MODEL=(768)
-declare -a HIDDEN_SIZE=(128)
-declare -a KERNEL_SIZE=(5)
-declare -a LLM_LAYERS=(6)
+declare -a HIDDEN_SIZE=(16)
+declare -a KERNEL_SIZE=(3)
+declare -a LLM_LAYERS=(4)
 declare -a ENC_IN=(1)
 declare -a DEC_IN=(1)
 declare -a C_OUT=(1)

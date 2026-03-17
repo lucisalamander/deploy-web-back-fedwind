@@ -58,7 +58,7 @@ fi
 # ============================================================================
 # DATASET PARAMETERS
 # ============================================================================
-declare -a DATASET_NAME=(KZMET VNMET)
+declare -a DATASET_NAME=(VNMET)
 
 # ============================================================================
 # TRAINING PARAMETERS
@@ -74,9 +74,9 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 # MODEL ARCHITECTURE PARAMETERS
 # ============================================================================
-declare -a MODEL=(llama_nonlinear bart_nonlinear bert_nonlinear)
+declare -a MODEL=(gpt4ts_nonlinear_attnres)
 declare -a SEQ_LEN=(336)
-declare -a PRED_LEN=(72)
+declare -a PRED_LEN=(1 72 432)
 declare -a PATCH_SIZE=(16)
 declare -a STRIDE=(16)
 declare -a D_MODEL=(768)

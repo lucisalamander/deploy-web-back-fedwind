@@ -303,3 +303,178 @@ class GPT4TS_Nonlinear(nn.Module):
             print(f"Could not print trainable parameters: {e}")
 
         return model
+
+
+class GPT4TS_Nonlinear_AttnRes(nn.Module):
+    """
+    GPT4TS Nonlinear + AttnRes Variant
+
+    Same as GPT4TS_Nonlinear but replaces last_hidden_state with a learned
+    attention-weighted aggregation over ALL hidden states (embedding + each layer).
+
+    Args:
+        configs: Configuration object containing model hyperparameters
+        device: Torch device (CPU/GPU) for model placement
+    """
+    def __init__(self, configs, device):
+        super(GPT4TS_Nonlinear_AttnRes, self).__init__()
+        self.is_gpt = configs.is_gpt
+        self.patch_size = configs.patch_size
+        self.pretrain = configs.pretrain
+        self.stride = configs.stride
+        self.patch_num = (configs.seq_len - self.patch_size) // self.stride + 1
+        self.padding_patch_layer = nn.ReplicationPad1d((0, self.stride))
+        self.patch_num += 1
+
+        if configs.is_gpt:
+            if configs.pretrain:
+                self.gpt2 = GPT2Model.from_pretrained(
+                    'gpt2',
+                    output_attentions=True,
+                    output_hidden_states=True,
+                    low_cpu_mem_usage=True,
+                    use_safetensors=True,
+                    )
+            else:
+                self.gpt2 = GPT2Model(GPT2Config())
+            self.gpt2.h = self.gpt2.h[:configs.llm_layers]
+
+            # Apply LoRA if enabled
+            if getattr(configs, 'use_lora', False):
+                self.gpt2 = self._apply_lora(
+                    self.gpt2,
+                    r=getattr(configs, "lora_r", 16),
+                    alpha=getattr(configs, "lora_alpha", 32),
+                    dropout=getattr(configs, "lora_dropout", 0.1),
+                    target_modules=getattr(
+                        configs,
+                        "lora_target_modules",
+                        ["c_attn", "c_fc", "c_proj"],
+                    ),
+                )
+
+        # Dropout for regularization
+        dropout_rate = getattr(configs, 'dropout', 0.15)
+
+        self.in_layer = ConvMLPPatchEmbedding(
+            patch_size=configs.patch_size,
+            d_model=configs.d_model,
+            hidden_size=configs.hidden_size,
+            kernel_size=configs.kernel_size,
+            dropout=dropout_rate
+        )
+        self.out_layer = nn.Linear(configs.d_model * self.patch_num,
+                                   configs.pred_len)
+
+        # Additional dropout layers
+        self.dropout_gpt = nn.Dropout(p=dropout_rate)
+        self.dropout_pre_out = nn.Dropout(p=dropout_rate)
+
+        # AttnRes components
+        self.attn_res_proj = nn.Linear(configs.d_model, 1, bias=False)
+        self.attn_res_norm = nn.RMSNorm(configs.d_model)
+
+        if configs.freeze and configs.pretrain:
+            for name, param in self.gpt2.named_parameters():
+                # Keep layer norm, positional embeddings, and LoRA parameters trainable
+                if 'lora_' in name or 'ln' in name or 'wpe' in name:
+                    param.requires_grad = True
+                else:
+                    param.requires_grad = False
+
+        for module in (getattr(self, 'gpt2', None), self.in_layer, self.out_layer,
+                       self.attn_res_proj, self.attn_res_norm):
+            if module is not None:
+                module.to(device)
+                module.train()
+
+    def attn_res_aggregate(self, all_hidden_states):
+        """
+        Learned attention-weighted aggregation over all hidden states.
+
+        Args:
+            all_hidden_states: [L, B, T, D] stacked hidden states
+
+        Returns:
+            [B, T, D] aggregated representation
+        """
+        V = all_hidden_states                    # [L, B, T, D]
+        K = self.attn_res_norm(V)                # normalize to prevent magnitude bias
+
+        # single learned query vector produces logits per layer
+        logits = torch.einsum(
+            'd, l b t d -> l b t',
+            self.attn_res_proj.weight.squeeze(),
+            K
+        )                                        # [L, B, T]
+
+        weights = logits.softmax(dim=0)          # [L, B, T] sums to 1 over L
+
+        # weighted sum over layers
+        out = torch.einsum(
+            'l b t, l b t d -> b t d',
+            weights, V
+        )                                        # [B, T, D]
+        return out
+
+    def forward(self, x, itr):
+        B, L, M = x.shape
+
+        means = x.mean(1, keepdim=True).detach()
+        x = x - means
+        stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True,
+                                     unbiased=False) + 1e-5).detach()
+        x = x / stdev
+
+        x = rearrange(x, 'b l m -> b m l')
+        x = self.padding_patch_layer(x)
+        x = x.unfold(dimension=-1,
+                     size=self.patch_size,
+                     step=self.stride)
+        x = rearrange(x, 'b m n p -> (b m) n p')
+
+        outputs = self.in_layer(x)
+
+        if self.is_gpt:
+            gpt_out = self.gpt2(inputs_embeds=outputs)
+            # hidden_states: tuple of L+1 tensors (embedding + each layer)
+            all_hidden = torch.stack(gpt_out.hidden_states)  # [L+1, B, T, D]
+            outputs = self.attn_res_aggregate(all_hidden)
+            outputs = self.dropout_gpt(outputs)
+
+        outputs = outputs.reshape(B * M, -1)
+        outputs = self.dropout_pre_out(outputs)
+        outputs = self.out_layer(outputs)
+        outputs = rearrange(outputs, '(b m) l -> b l m', b=B)
+
+        outputs = outputs * stdev
+        outputs = outputs + means
+        return outputs
+
+    def _apply_lora(self, model, r=16, alpha=32, dropout=0.1, target_modules=None):
+        """
+        Apply LoRA (Low-Rank Adaptation) to the model.
+        """
+        if LoraConfig is None or get_peft_model is None:
+            print("Warning: peft library not available. Skipping LoRA application.")
+            return model
+
+        if target_modules is None:
+            target_modules = ["c_attn", "c_fc", "c_proj"]
+
+        lora_cfg = LoraConfig(
+            r=r,
+            lora_alpha=alpha,
+            lora_dropout=dropout,
+            target_modules=target_modules,
+            bias="none",
+            task_type=TaskType.FEATURE_EXTRACTION if TaskType is not None else None,
+        )
+        model = get_peft_model(model, lora_cfg)
+
+        try:
+            model.print_trainable_parameters()
+        except Exception as e:
+            print(f"Could not print trainable parameters: {e}")
+
+        return model

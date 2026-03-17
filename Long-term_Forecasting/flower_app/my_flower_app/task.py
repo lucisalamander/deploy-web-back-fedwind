@@ -74,6 +74,7 @@ if baselines_root not in sys.path:
 # ---------------------------------------------------------------------------
 MODEL_REGISTRY = {
     "gpt4ts_nonlinear": ("GPT4TS", "GPT4TS_Nonlinear", "is_gpt",   "llm",      "llm"),
+    "gpt4ts_nonlinear_attnres": ("GPT4TS", "GPT4TS_Nonlinear_AttnRes", "is_gpt", "llm", "llm"),
     "gpt4ts_linear":    ("GPT4TS", "GPT4TS_Linear",    "is_gpt",   "llm",      "llm"),
     "bart_nonlinear":   ("BART",   "BART_Nonlinear",   "is_bart",  "llm",      "llm"),
     "bart_linear":      ("BART",   "BART_Linear",      "is_bart",  "llm",      "llm"),
