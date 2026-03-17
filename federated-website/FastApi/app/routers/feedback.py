@@ -5,18 +5,26 @@ Stores website feedback/questions, supports answering them,
 exposes public answered questions for the website,
 and processes Telegram webhook replies.
 
-Storage is still JSONL for simplicity.
+Storage now uses SQLite instead of JSONL.
 """
 
-import json
-import os
-import uuid
-from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from app.services.feedback_db import (
+    create_conversation_with_user_message,
+    create_developer_answer,
+    create_user_follow_up_message,
+    delete_conversation,
+    get_conversation_entries,
+    get_user_message_target_by_telegram_message_id,
+    get_conversation_messages,
+    get_public_answers,
+    get_first_user_message,
+    set_message_telegram_id,
+)
 from app.services.telegram_service import (
     SUPPORT_CHAT_ID,
     delete_telegram_webhook,
@@ -26,8 +34,6 @@ from app.services.telegram_service import (
 )
 
 router = APIRouter(prefix="/api/feedback", tags=["Feedback"])
-
-FEEDBACK_FILE = "feedback/user_feedback.jsonl"
 
 
 class FeedbackCreate(BaseModel):
@@ -42,13 +48,11 @@ class FeedbackEntry(BaseModel):
     name: Optional[str] = None
     context: Optional[str] = None
     created_at: str
-
-    status: str = "pending"  # pending | answered
+    status: str = "pending"
     answer_text: Optional[str] = None
     answered_at: Optional[str] = None
     answered_by: Optional[str] = None
     is_public: bool = False
-
     telegram_message_id: Optional[int] = None
 
 
@@ -69,6 +73,32 @@ class AnswerFeedbackRequest(BaseModel):
     is_public: bool = True
 
 
+class FollowUpRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=10000)
+    name: Optional[str] = Field(None, max_length=100)
+    context: Optional[str] = Field(None, max_length=200)
+    reply_to_message_id: Optional[str] = None
+
+
+class ConversationMessageItem(BaseModel):
+    id: str
+    conversation_id: str
+    sender_type: str
+    sender_name: Optional[str] = None
+    message_text: str
+    context: Optional[str] = None
+    created_at: str
+    is_public: bool = False
+    telegram_message_id: Optional[int] = None
+    reply_to_message_id: Optional[str] = None
+
+
+class ConversationMessagesResponse(BaseModel):
+    conversation_id: str
+    entries: list[ConversationMessageItem]
+    total: int
+
+
 class PublicAnswerItem(BaseModel):
     id: str
     question: str
@@ -87,71 +117,11 @@ class TelegramWebhookSetupRequest(BaseModel):
     public_base_url: str = Field(..., min_length=1, description="Public HTTPS base URL, without trailing slash")
 
 
-def _ensure_feedback_dir():
-    os.makedirs(os.path.dirname(FEEDBACK_FILE), exist_ok=True)
-
-
-def _generate_id() -> str:
-    return str(uuid.uuid4())[:8]
-
-
-def _normalize_entry(data: dict) -> FeedbackEntry:
-    telegram_message_id = data.get("telegram_message_id")
-    if telegram_message_id is not None:
-        try:
-            telegram_message_id = int(telegram_message_id)
-        except (TypeError, ValueError):
-            telegram_message_id = None
-
-    return FeedbackEntry(
-        id=str(data.get("id") or _generate_id()),
-        message=str(data.get("message") or "").strip(),
-        name=str(data["name"]).strip() if data.get("name") else None,
-        context=str(data["context"]).strip() if data.get("context") else None,
-        created_at=str(data.get("created_at") or (datetime.utcnow().isoformat() + "Z")),
-        status=str(data.get("status") or "pending"),
-        answer_text=str(data["answer_text"]).strip() if data.get("answer_text") else None,
-        answered_at=str(data["answered_at"]) if data.get("answered_at") else None,
-        answered_by=str(data["answered_by"]).strip() if data.get("answered_by") else None,
-        is_public=bool(data.get("is_public", False)),
-        telegram_message_id=telegram_message_id,
-    )
-
-
-def _read_entries() -> list[FeedbackEntry]:
-    _ensure_feedback_dir()
-    entries: list[FeedbackEntry] = []
-
-    if not os.path.exists(FEEDBACK_FILE):
-        return entries
-
-    with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                raw = json.loads(line)
-                entries.append(_normalize_entry(raw))
-            except (json.JSONDecodeError, ValueError, TypeError):
-                continue
-
-    return entries
-
-
-def _write_entries(entries: list[FeedbackEntry]) -> None:
-    _ensure_feedback_dir()
-    with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
-        for entry in entries:
-            f.write(json.dumps(entry.model_dump(), ensure_ascii=False) + "\n")
-
-
 def _build_telegram_question_text(entry: FeedbackEntry) -> str:
     return (
         f"📩 New Website Question\n\n"
-        f"🆔 ID: {entry.id}\n"
+        f"🆔 Conversation ID: {entry.id}\n"
         f"👤 Name: {entry.name or 'Anonymous'}\n"
-        f"📍 Context: {entry.context or 'N/A'}\n"
         f"🕒 Created At: {entry.created_at}\n"
         f"📌 Status: {entry.status}\n\n"
         f"❓ Question:\n{entry.message}\n\n"
@@ -160,11 +130,21 @@ def _build_telegram_question_text(entry: FeedbackEntry) -> str:
     )
 
 
-def _find_entry_by_telegram_message_id(entries: list[FeedbackEntry], telegram_message_id: int) -> Optional[int]:
-    for index, entry in enumerate(entries):
-        if entry.telegram_message_id == telegram_message_id:
-            return index
-    return None
+def _build_telegram_follow_up_text(
+    conversation_id: str,
+    message: str,
+    name: Optional[str],
+    created_at: str,
+) -> str:
+    return (
+        f"🔁 Website Follow-up\n\n"
+        f"🆔 Conversation ID: {conversation_id}\n"
+        f"👤 Name: {name or 'Anonymous'}\n"
+        f"🕒 Created At: {created_at}\n\n"
+        f"💬 Follow-up:\n{message}\n\n"
+        f"Reply to this message with:\n"
+        f"ANSWER: your answer here"
+    )
 
 
 def _extract_sender_name(message_from: dict) -> str:
@@ -174,29 +154,25 @@ def _extract_sender_name(message_from: dict) -> str:
 
     if username:
         return f"@{username}"
+
     full_name = f"{first_name} {last_name}".strip()
     return full_name or "Developer"
 
 
-def _apply_answer(entry: FeedbackEntry, answer_text: str, answered_by: str, is_public: bool = True) -> FeedbackEntry:
-    entry.answer_text = answer_text.strip()
-    entry.answered_at = datetime.utcnow().isoformat() + "Z"
-    entry.answered_by = answered_by.strip() if answered_by else "Developer"
-    entry.status = "answered"
-    entry.is_public = is_public
-    return entry
-
-
 @router.post("", response_model=FeedbackResponse)
 async def submit_feedback(feedback: FeedbackCreate):
-    entries = _read_entries()
+    created = create_conversation_with_user_message(
+        message_text=feedback.message.strip(),
+        sender_name=feedback.name.strip() if feedback.name else None,
+        context=feedback.context.strip() if feedback.context else None,
+    )
 
     entry = FeedbackEntry(
-        id=_generate_id(),
+        id=created["conversation_id"],
         message=feedback.message.strip(),
         name=feedback.name.strip() if feedback.name else None,
         context=feedback.context.strip() if feedback.context else None,
-        created_at=datetime.utcnow().isoformat() + "Z",
+        created_at=created["created_at"],
         status="pending",
         answer_text=None,
         answered_at=None,
@@ -205,17 +181,14 @@ async def submit_feedback(feedback: FeedbackCreate):
         telegram_message_id=None,
     )
 
-    entries.append(entry)
-
     try:
         telegram_response = send_telegram_message(_build_telegram_question_text(entry))
         message_id = telegram_response.get("result", {}).get("message_id")
         if isinstance(message_id, int):
             entry.telegram_message_id = message_id
+            set_message_telegram_id(created["message_id"], message_id)
     except Exception as e:
         print(f"Failed to send feedback to Telegram: {e}")
-
-    _write_entries(entries)
 
     return FeedbackResponse(
         success=True,
@@ -226,53 +199,164 @@ async def submit_feedback(feedback: FeedbackCreate):
 
 @router.get("", response_model=FeedbackListResponse)
 async def list_feedback():
-    entries = _read_entries()
-    entries.reverse()
+    rows = get_conversation_entries()
+
+    entries = [
+        FeedbackEntry(
+            id=row["id"],
+            message=row["message"],
+            name=row["name"],
+            context=row["context"],
+            created_at=row["created_at"],
+            status=row["status"],
+            answer_text=row["answer_text"],
+            answered_at=row["answered_at"],
+            answered_by=row["answered_by"],
+            is_public=row["is_public"],
+            telegram_message_id=row["telegram_message_id"],
+        )
+        for row in rows
+    ]
+
     return FeedbackListResponse(entries=entries, total=len(entries))
+
+
+@router.get("/{feedback_id}/messages", response_model=ConversationMessagesResponse)
+async def get_feedback_messages(feedback_id: str):
+    try:
+        rows = get_conversation_messages(feedback_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+
+    entries = [
+        ConversationMessageItem(
+            id=row["id"],
+            conversation_id=row["conversation_id"],
+            sender_type=row["sender_type"],
+            sender_name=row["sender_name"],
+            message_text=row["message_text"],
+            context=row["context"],
+            created_at=row["created_at"],
+            is_public=row["is_public"],
+            telegram_message_id=row["telegram_message_id"],
+            reply_to_message_id=row["reply_to_message_id"],
+        )
+        for row in rows
+    ]
+
+    return ConversationMessagesResponse(
+        conversation_id=feedback_id,
+        entries=entries,
+        total=len(entries),
+    )
+
+
+@router.post("/{feedback_id}/follow-up", response_model=FeedbackResponse)
+async def create_feedback_follow_up(feedback_id: str, payload: FollowUpRequest):
+    try:
+        created = create_user_follow_up_message(
+            conversation_id=feedback_id,
+            message_text=payload.message.strip(),
+            sender_name=payload.name.strip() if payload.name else None,
+            context=payload.context.strip() if payload.context else None,
+            reply_to_message_id=payload.reply_to_message_id,
+        )
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+
+    telegram_message_id = None
+
+    try:
+        telegram_response = send_telegram_message(
+            _build_telegram_follow_up_text(
+                conversation_id=feedback_id,
+                message=payload.message.strip(),
+                name=payload.name.strip() if payload.name else None,
+                created_at=created["created_at"],
+            )
+        )
+        message_id = telegram_response.get("result", {}).get("message_id")
+        if isinstance(message_id, int):
+            telegram_message_id = message_id
+            set_message_telegram_id(created["message_id"], message_id)
+    except Exception as e:
+        print(f"Failed to send follow-up to Telegram: {e}")
+
+    return FeedbackResponse(
+        success=True,
+        message="Follow-up sent successfully.",
+        entry=FeedbackEntry(
+            id=feedback_id,
+            message=payload.message.strip(),
+            name=payload.name.strip() if payload.name else None,
+            context=payload.context.strip() if payload.context else None,
+            created_at=created["created_at"],
+            status="pending",
+            answer_text=None,
+            answered_at=None,
+            answered_by=None,
+            is_public=False,
+            telegram_message_id=telegram_message_id,
+        ),
+    )
 
 
 @router.patch("/{feedback_id}/answer", response_model=FeedbackResponse)
 async def answer_feedback(feedback_id: str, payload: AnswerFeedbackRequest):
-    entries = _read_entries()
+    rows = get_conversation_entries()
+    target = next((row for row in rows if row["id"] == feedback_id), None)
 
-    for i, entry in enumerate(entries):
-        if entry.id == feedback_id:
-            entry = _apply_answer(
-                entry=entry,
-                answer_text=payload.answer_text,
-                answered_by=payload.answered_by or "Developer",
-                is_public=payload.is_public,
-            )
-            entries[i] = entry
-            _write_entries(entries)
+    if not target:
+        raise HTTPException(status_code=404, detail="Feedback not found")
 
-            return FeedbackResponse(
-                success=True,
-                message="Feedback answered successfully.",
-                entry=entry,
-            )
+    first_user_message = get_first_user_message(feedback_id)
+    if not first_user_message:
+        raise HTTPException(status_code=404, detail="Main question not found")
 
-    raise HTTPException(status_code=404, detail="Feedback not found")
+    created = create_developer_answer(
+        conversation_id=feedback_id,
+        answer_text=payload.answer_text,
+        answered_by=payload.answered_by or "Developer",
+        is_public=payload.is_public,
+        reply_to_message_id=first_user_message["id"],
+    )
+
+    entry = FeedbackEntry(
+        id=feedback_id,
+        message=target["message"],
+        name=target["name"],
+        context=target["context"],
+        created_at=target["created_at"],
+        status="answered",
+        answer_text=payload.answer_text.strip(),
+        answered_at=created["answered_at"],
+        answered_by=payload.answered_by or "Developer",
+        is_public=payload.is_public,
+        telegram_message_id=target["telegram_message_id"],
+    )
+
+    return FeedbackResponse(
+        success=True,
+        message="Feedback answered successfully.",
+        entry=entry,
+    )
 
 
 @router.get("/public-answers", response_model=PublicAnswersResponse)
 async def list_public_answers():
-    entries = _read_entries()
+    rows = get_public_answers()
 
     public_entries = [
         PublicAnswerItem(
-            id=entry.id,
-            question=entry.message,
-            answer_text=entry.answer_text or "",
-            created_at=entry.created_at,
-            answered_at=entry.answered_at or "",
-            asked_by="Anonymous",
+            id=row["id"],
+            question=row["question"],
+            answer_text=row["answer_text"],
+            created_at=row["created_at"],
+            answered_at=row["answered_at"],
+            asked_by=row["asked_by"],
         )
-        for entry in entries
-        if entry.status == "answered" and entry.is_public and entry.answer_text
+        for row in rows
     ]
-
-    public_entries.sort(key=lambda x: x.answered_at, reverse=True)
 
     return PublicAnswersResponse(entries=public_entries, total=len(public_entries))
 
@@ -348,39 +432,34 @@ async def telegram_webhook(request: Request):
     if not isinstance(replied_message_id, int):
         return {"ok": True, "ignored": "Replied message_id missing"}
 
-    entries = _read_entries()
-    target_index = _find_entry_by_telegram_message_id(entries, replied_message_id)
+    target = get_user_message_target_by_telegram_message_id(replied_message_id)
 
-    if target_index is None:
+    if not target:
         return {"ok": True, "ignored": "No matching feedback entry"}
 
     answered_by = _extract_sender_name(message.get("from") or {})
 
-    entry = entries[target_index]
-    entry = _apply_answer(
-        entry=entry,
+    create_developer_answer(
+        conversation_id=target["conversation_id"],
         answer_text=answer_text,
         answered_by=answered_by,
         is_public=True,
+        reply_to_message_id=target["message_id"],
     )
-    entries[target_index] = entry
-    _write_entries(entries)
 
     return {
         "ok": True,
         "message": "Answer saved successfully.",
-        "feedback_id": entry.id,
+        "feedback_id": target["conversation_id"],
+        "reply_to_message_id": target["message_id"],
     }
 
 
 @router.delete("/{feedback_id}")
 async def delete_feedback(feedback_id: str):
-    entries = _read_entries()
+    deleted = delete_conversation(feedback_id)
 
-    remaining_entries = [entry for entry in entries if entry.id != feedback_id]
-
-    if len(remaining_entries) == len(entries):
+    if not deleted:
         raise HTTPException(status_code=404, detail="Feedback not found")
 
-    _write_entries(remaining_entries)
     return {"success": True, "message": "Feedback deleted"}

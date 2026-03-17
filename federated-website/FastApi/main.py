@@ -25,6 +25,7 @@ from app.routers.train import router as train_router
 from app.routers.federated import router as federated_router
 from app.routers.feedback import router as feedback_router
 
+from app.services.feedback_db import init_feedback_db
 
 # ---------------------------------------------------------------------------
 # App
@@ -99,6 +100,8 @@ async def startup_event():
     os.makedirs("uploads", exist_ok=True)
     os.makedirs("models", exist_ok=True)
     os.makedirs("feedback", exist_ok=True)
+
+    init_feedback_db()
 
     print()
     print("=" * 56)

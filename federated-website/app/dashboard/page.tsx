@@ -13,9 +13,12 @@ import {
   deleteUploadedFile,
   submitFeedback,
   getPublicAnswers,
+  getFeedbackMessages,
+  createFeedbackFollowUp,
   type HealthResponse,
   type TrainingResult,
   type PublicAnswerItem,
+  type ConversationMessageItem,
 } from "@/lib/api"
 import { SectionHeader } from "@/components/section-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -109,6 +112,15 @@ export default function DashboardPage() {
   const [publicAnswers, setPublicAnswers] = useState<PublicAnswerItem[]>([])
   const [loadingPublicAnswers, setLoadingPublicAnswers] = useState(false)
   const [currentAnswersPage, setCurrentAnswersPage] = useState(1)
+  const [expandedConversationId, setExpandedConversationId] = useState<string | null>(null)
+  const [loadingConversationId, setLoadingConversationId] = useState<string | null>(null)
+  const [conversationMessages, setConversationMessages] = useState<Record<string, ConversationMessageItem[]>>({})
+  const [replyConversationId, setReplyConversationId] = useState<string | null>(null)
+  const [replyToMessageId, setReplyToMessageId] = useState<string | null>(null)
+  const [followUpMessage, setFollowUpMessage] = useState("")
+  const [followUpName, setFollowUpName] = useState("")
+  const [sendingFollowUp, setSendingFollowUp] = useState(false)
+  const [expandedReplyChildren, setExpandedReplyChildren] = useState<Record<string, boolean>>({})
   const ANSWERS_PER_PAGE = 5
 
   // Load uploaded files list
@@ -167,6 +179,405 @@ export default function DashboardPage() {
       setLoadingPublicAnswers(false)
     }
   }
+
+  const loadConversationMessages = async (conversationId: string) => {
+    setLoadingConversationId(conversationId)
+    try {
+      const result = await getFeedbackMessages(conversationId)
+      setConversationMessages((prev) => ({
+        ...prev,
+        [conversationId]: result.entries,
+      }))
+      return result.entries
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load conversation")
+      return []
+    } finally {
+      setLoadingConversationId(null)
+    }
+  }
+
+  const toggleConversationThread = async (conversationId: string) => {
+    if (expandedConversationId === conversationId) {
+      setExpandedConversationId(null)
+
+      if (replyConversationId === conversationId) {
+        setReplyConversationId(null)
+        setReplyToMessageId(null)
+        setFollowUpMessage("")
+        setFollowUpName("")
+      }
+      return
+    }
+
+    setExpandedConversationId(conversationId)
+
+    if (!conversationMessages[conversationId]) {
+      await loadConversationMessages(conversationId)
+    }
+  }
+
+  const getVisibleMessages = (conversationId: string) => {
+    const messages = conversationMessages[conversationId] ?? []
+    return messages.filter(
+      (message) => message.sender_type === "user" || message.is_public,
+    )
+  }
+
+  const getThreadRootQuestionMessage = (conversationId: string) => {
+    const messages = conversationMessages[conversationId] ?? []
+    return messages.find((message) => message.sender_type === "user") ?? null
+  }
+
+  const getMainOfficialAnswerMessage = (conversationId: string) => {
+    const rootQuestion = getThreadRootQuestionMessage(conversationId)
+    if (!rootQuestion) return null
+
+    const messages = conversationMessages[conversationId] ?? []
+    const matches = messages
+      .filter(
+        (message) =>
+          message.sender_type === "developer" &&
+          message.is_public &&
+          message.reply_to_message_id === rootQuestion.id,
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      )
+
+    return matches.length > 0 ? matches[matches.length - 1] : null
+  }
+
+  const findMessageById = (conversationId: string, messageId: string | null) => {
+    if (!messageId) return null
+    const messages = conversationMessages[conversationId] ?? []
+    return messages.find((message) => message.id === messageId) ?? null
+  }
+
+  const getMessageElementId = (messageId: string) => `thread-message-${messageId}`
+
+  const scrollToMessage = (messageId: string | null) => {
+    if (!messageId) return
+
+    const element = document.getElementById(getMessageElementId(messageId))
+    if (!element) return
+
+    element.scrollIntoView({ behavior: "smooth", block: "center" })
+
+    element.classList.add(
+      "rounded-md",
+      "bg-yellow-100/60",
+      "ring-1",
+      "ring-yellow-300/60",
+      "transition-all",
+      "duration-300"
+    )
+
+    window.setTimeout(() => {
+      element.classList.remove(
+        "rounded-md",
+        "bg-yellow-100/60",
+        "ring-1",
+        "ring-yellow-300/60",
+        "transition-all",
+        "duration-300"
+      )
+    }, 900)
+  }
+
+  const getReplyPreviewText = (conversationId: string, replyToMessageId: string | null) => {
+    const targetMessage = findMessageById(conversationId, replyToMessageId)
+    if (!targetMessage) return "Earlier message"
+
+    const text = targetMessage.message_text.trim()
+    if (text.length <= 60) return text
+    return `${text.slice(0, 60)}...`
+  }
+
+  const openReplyFormForQuestion = async (conversationId: string) => {
+    let messages = conversationMessages[conversationId]
+
+    if (!messages) {
+      setExpandedConversationId(conversationId)
+      messages = await loadConversationMessages(conversationId)
+    } else if (expandedConversationId !== conversationId) {
+      setExpandedConversationId(conversationId)
+    }
+
+    const rootQuestion =
+      messages?.find((message) => message.sender_type === "user") ?? null
+
+    if (!rootQuestion) {
+      setError("Could not find the main question to reply to.")
+      return
+    }
+
+    setReplyConversationId(conversationId)
+    setReplyToMessageId(rootQuestion.id)
+  }
+
+  const openReplyFormForMessage = async (conversationId: string, messageId: string) => {
+    if (expandedConversationId !== conversationId) {
+      setExpandedConversationId(conversationId)
+    }
+
+    if (!conversationMessages[conversationId]) {
+      await loadConversationMessages(conversationId)
+    }
+
+    setReplyConversationId(conversationId)
+    setReplyToMessageId(messageId)
+  }
+
+  const closeReplyForm = () => {
+    setReplyConversationId(null)
+    setReplyToMessageId(null)
+    setFollowUpMessage("")
+    setFollowUpName("")
+  }
+
+  const handleSubmitFollowUp = async () => {
+    if (!replyConversationId || !replyToMessageId || !followUpMessage.trim()) return
+
+    setSendingFollowUp(true)
+    try {
+      await createFeedbackFollowUp(
+        replyConversationId,
+        followUpMessage.trim(),
+        followUpName.trim() || undefined,
+        "dashboard",
+        replyToMessageId,
+      )
+
+      const conversationId = replyConversationId
+      closeReplyForm()
+      setExpandedConversationId(conversationId)
+      await loadConversationMessages(conversationId)
+      await loadPublicAnswers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send follow-up")
+    } finally {
+      setSendingFollowUp(false)
+    }
+  }
+
+  const getTopLevelThreadMessages = (conversationId: string) => {
+    const visibleMessages = getVisibleMessages(conversationId)
+    const rootQuestion = getThreadRootQuestionMessage(conversationId)
+    const mainOfficialAnswer = getMainOfficialAnswerMessage(conversationId)
+
+    if (!rootQuestion) return []
+
+    return visibleMessages
+      .filter((message) => {
+        if (message.id === rootQuestion.id) return false
+        if (mainOfficialAnswer && message.id === mainOfficialAnswer.id) return false
+        if (!message.reply_to_message_id) return false
+
+        return (
+          message.reply_to_message_id === rootQuestion.id ||
+          (mainOfficialAnswer && message.reply_to_message_id === mainOfficialAnswer.id)
+        )
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      )
+  }
+
+  const getChildThreadMessages = (conversationId: string, parentMessageId: string) => {
+    const visibleMessages = getVisibleMessages(conversationId)
+
+    return visibleMessages
+      .filter((message) => message.reply_to_message_id === parentMessageId)
+      .sort(
+        (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      )
+  }
+
+  const getOrphanPublicReplies = (conversationId: string) => {
+    const visibleMessages = getVisibleMessages(conversationId)
+    const rootQuestion = getThreadRootQuestionMessage(conversationId)
+    const mainOfficialAnswer = getMainOfficialAnswerMessage(conversationId)
+    const validParentIds = new Set(visibleMessages.map((message) => message.id))
+
+    return visibleMessages.filter((message) => {
+      if (!(message.sender_type === "developer" && message.is_public)) {
+        return false
+      }
+
+      if (!message.reply_to_message_id) {
+        return false
+      }
+
+      if (rootQuestion && message.reply_to_message_id === rootQuestion.id) {
+        return false
+      }
+
+      if (mainOfficialAnswer && message.reply_to_message_id === mainOfficialAnswer.id) {
+        return false
+      }
+
+      return !validParentIds.has(message.reply_to_message_id)
+    })
+  }
+
+  const toggleReplyChildren = (messageId: string) => {
+    setExpandedReplyChildren((prev) => ({
+      ...prev,
+      [messageId]: !prev[messageId],
+    }))
+  } 
+
+
+  const renderReplyForm = (conversationId: string, messageId: string) => {
+    const isOpen =
+      replyConversationId === conversationId && replyToMessageId === messageId
+
+    if (!isOpen) return null
+
+    return (
+      <div className="mt-3 rounded-lg border border-border bg-background p-4 space-y-4">
+        <div>
+          <label className="text-sm font-medium text-foreground block mb-2">
+            Your Name (optional)
+          </label>
+          <input
+            type="text"
+            value={followUpName}
+            onChange={(e) => setFollowUpName(e.target.value)}
+            placeholder="Enter your name or leave blank for anonymous"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+          />
+        </div>
+
+        <div>
+          <label className="text-sm font-medium text-foreground block mb-2">
+            Reply
+          </label>
+          <textarea
+            value={followUpMessage}
+            onChange={(e) => setFollowUpMessage(e.target.value)}
+            placeholder="Write your reply here..."
+            className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 resize-vertical min-h-24"
+          />
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={closeReplyForm}
+            disabled={sendingFollowUp}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            onClick={handleSubmitFollowUp}
+            disabled={sendingFollowUp || !followUpMessage.trim()}
+            className="gap-2"
+          >
+            {sendingFollowUp ? (
+              <>
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                Sending...
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" />
+                Send Reply
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+const renderConversationNode = (
+  conversationId: string,
+  message: ConversationMessageItem,
+  depth = 0,
+): React.ReactNode => {
+  const childMessages = getChildThreadMessages(conversationId, message.id)
+  const hasChildren = childMessages.length > 0
+  const showChildren = expandedReplyChildren[message.id] ?? false
+
+  return (
+    <div
+      key={message.id}
+      className={depth > 0 ? "ml-6 border-l border-border pl-4 space-y-3" : "space-y-3"}
+    >
+      <div
+        id={getMessageElementId(message.id)}
+        className={`rounded-md border p-3 ${
+          message.sender_type === "developer"
+            ? "border-primary/20 bg-primary/5"
+            : "border-border bg-muted/20"
+        }`}
+      >
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>
+            {message.sender_type === "developer"
+              ? "Official Reply"
+              : message.sender_name || "User"}{" "}
+            • {new Date(message.created_at).toLocaleString()}
+          </span>
+
+          {message.reply_to_message_id && (
+            <button
+              type="button"
+              onClick={() => scrollToMessage(message.reply_to_message_id)}
+              className="italic underline underline-offset-2 hover:text-foreground"
+            >
+              Re: {getReplyPreviewText(conversationId, message.reply_to_message_id)}
+            </button>
+          )}
+        </div>
+
+        <p className="text-sm text-foreground whitespace-pre-wrap">
+          {message.message_text}
+        </p>
+
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => openReplyFormForMessage(conversationId, message.id)}
+            className="h-auto p-0 text-xs font-bold text-muted-foreground hover:bg-transparent hover:text-foreground"
+          >
+            Reply
+          </Button>
+
+          {hasChildren && (
+            <button
+              type="button"
+              onClick={() => toggleReplyChildren(message.id)}
+              className="text-xs font-medium text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              {showChildren
+                ? `Hide replies (${childMessages.length})`
+                : `Show replies (${childMessages.length})`}
+            </button>
+          )}
+        </div>
+
+        {renderReplyForm(conversationId, message.id)}
+      </div>
+
+      {hasChildren && showChildren && (
+        <div className="space-y-3">
+          {childMessages.map((childMessage) =>
+            renderConversationNode(conversationId, childMessage, depth + 1),
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 
   const totalAnswerPages = Math.max(1, Math.ceil(publicAnswers.length / ANSWERS_PER_PAGE))
   const startAnswerIndex = (currentAnswersPage - 1) * ANSWERS_PER_PAGE
@@ -235,6 +646,15 @@ export default function DashboardPage() {
       const newFiles = Array.from(e.target.files)
       setFiles(prev => [...prev, ...newFiles])
       setError(null)
+    }
+  }
+
+  // Refresh Answers handler
+  const handleRefreshAnswers = async () => {
+    await loadPublicAnswers()
+
+    if (expandedConversationId) {
+      await loadConversationMessages(expandedConversationId)
     }
   }
 
@@ -1074,7 +1494,7 @@ export default function DashboardPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={loadPublicAnswers}
+                onClick={handleRefreshAnswers}
                 disabled={loadingPublicAnswers || !apiConnected}
                 className="ml-auto gap-2 bg-transparent"
               >
@@ -1103,14 +1523,27 @@ export default function DashboardPage() {
                     key={item.id}
                     className="rounded-lg border border-border bg-muted/20 p-4"
                   >
-                    <div>
+                    <div
+                      id={
+                        getThreadRootQuestionMessage(item.id)
+                          ? getMessageElementId(getThreadRootQuestionMessage(item.id)!.id)
+                          : undefined
+                      }
+                    >
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
                         Question
                       </p>
                       <p className="text-foreground font-medium">{item.question}</p>
                     </div>
 
-                    <div className="mt-4 rounded-md border border-primary/10 bg-primary/5 p-4">
+                    <div
+                      id={
+                        getMainOfficialAnswerMessage(item.id)
+                          ? getMessageElementId(getMainOfficialAnswerMessage(item.id)!.id)
+                          : undefined
+                      }
+                      className="mt-4 rounded-md border border-primary/10 bg-primary/5 p-4"
+                    >
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
                         Official Answer
                       </p>
@@ -1122,6 +1555,110 @@ export default function DashboardPage() {
                     <div className="mt-3 text-xs text-muted-foreground">
                       Answered on {new Date(item.answered_at).toLocaleString()}
                     </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleConversationThread(item.id)}
+                      >
+                        {expandedConversationId === item.id ? "Hide Thread" : "View Thread"}
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openReplyFormForQuestion(item.id)}
+                      >
+                        {replyConversationId === item.id &&
+                        replyToMessageId === getThreadRootQuestionMessage(item.id)?.id
+                          ? "Cancel Reply"
+                          : "Reply to Question"}
+                      </Button>
+                    </div>
+
+                    {replyConversationId === item.id &&
+                      replyToMessageId === getThreadRootQuestionMessage(item.id)?.id &&
+                      renderReplyForm(item.id, getThreadRootQuestionMessage(item.id)!.id)}
+
+                    {expandedConversationId === item.id && (
+                      <div className="mt-4 rounded-lg border border-border bg-background p-4">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
+                          Conversation Thread
+                        </p>
+
+                        {loadingConversationId === item.id ? (
+                          <div className="flex items-center text-sm text-muted-foreground">
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent mr-2" />
+                            Loading thread...
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {getTopLevelThreadMessages(item.id).length === 0 &&
+                            getOrphanPublicReplies(item.id).length === 0 ? (
+                              <p className="text-sm text-muted-foreground">
+                                No additional follow-ups yet.
+                              </p>
+                            ) : (
+                              <>
+                                {getTopLevelThreadMessages(item.id).map((message) =>
+                                  renderConversationNode(item.id, message),
+                                )}
+
+                                {getOrphanPublicReplies(item.id).length > 0 && (
+                                  <div className="space-y-2">
+                                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                      Additional Replies
+                                    </p>
+
+                                    {getOrphanPublicReplies(item.id).map((reply) => (
+                                      <div
+                                        key={reply.id}
+                                        id={getMessageElementId(reply.id)}
+                                        className="rounded-md border border-primary/20 bg-primary/5 p-3"
+                                      >
+                                        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                          <span>
+                                            Official Reply • {new Date(reply.created_at).toLocaleString()}
+                                          </span>
+
+                                          {reply.reply_to_message_id && (
+                                            <button
+                                              type="button"
+                                              onClick={() => scrollToMessage(reply.reply_to_message_id)}
+                                              className="italic underline underline-offset-2 hover:text-foreground"
+                                            >
+                                              Re: {getReplyPreviewText(item.id, reply.reply_to_message_id)}
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        <p className="text-sm text-foreground whitespace-pre-wrap">
+                                          {reply.message_text}
+                                        </p>
+
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => openReplyFormForMessage(item.id, reply.id)}
+                                          className="mt-2 h-auto p-0 text-xs font-bold text-muted-foreground hover:bg-transparent hover:text-foreground"
+                                        >
+                                          Reply
+                                        </Button>
+
+                                        {renderReplyForm(item.id, reply.id)}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+
                   </div>
                 ))}
 

@@ -129,6 +129,24 @@ export interface PublicAnswersResponse {
   total: number
 }
 
+export interface ConversationMessageItem {
+  id: string
+  conversation_id: string
+  sender_type: string
+  sender_name: string | null
+  message_text: string
+  context: string | null
+  created_at: string
+  is_public: boolean
+  telegram_message_id: number | null
+  reply_to_message_id: string | null
+}
+
+export interface ConversationMessagesResponse {
+  conversation_id: string
+  entries: ConversationMessageItem[]
+  total: number
+}
 
 // Kept for backward compatibility with federated mode UI
 export interface ModelUpdateResponse {
@@ -257,6 +275,31 @@ export async function submitFeedback(
 
 export async function getPublicAnswers(): Promise<PublicAnswersResponse> {
   return apiFetch<PublicAnswersResponse>("/api/feedback/public-answers")
+}
+
+export async function getFeedbackMessages(
+  feedbackId: string,
+): Promise<ConversationMessagesResponse> {
+  return apiFetch<ConversationMessagesResponse>(`/api/feedback/${feedbackId}/messages`)
+}
+
+export async function createFeedbackFollowUp(
+  feedbackId: string,
+  message: string,
+  name?: string,
+  context?: string,
+  replyToMessageId?: string,
+): Promise<FeedbackResponse> {
+  return apiFetch<FeedbackResponse>(`/api/feedback/${feedbackId}/follow-up`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      name,
+      context,
+      reply_to_message_id: replyToMessageId,
+    }),
+  })
 }
 
 // Legacy alias kept so existing imports don't break
