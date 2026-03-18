@@ -53,9 +53,7 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     Execute centralized training by calling run_centralized.py as a subprocess.
     """
     import subprocess
-
     start = time.time()
-
     logger.info("=" * 70)
     logger.info("CENTRALIZED TRAINING REQUEST RECEIVED")
     logger.info("=" * 70)
@@ -69,30 +67,21 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     logger.info(f"  csv_path:          {getattr(inp, 'csv_path', 'N/A')}")
     logger.info("-" * 70)
 
+    # ── STEP 1: Verify paths ──────────────────────────────────────────────
     logger.info("[STEP 1] Verifying paths...")
     logger.info(f"  TRAINING_REPO_ROOT: {TRAINING_REPO_ROOT}")
     logger.info(f"  RUN_SCRIPT:         {RUN_SCRIPT}")
     logger.info(f"  TRAINING_PYTHON:    {TRAINING_PYTHON}")
 
     if not os.path.isdir(TRAINING_REPO_ROOT):
-        msg = f"Training repo directory NOT FOUND: {TRAINING_REPO_ROOT}"
-        logger.error(msg)
-        raise RuntimeError(msg)
-    logger.info(f"  ✓ Training repo directory exists")
-
+        raise RuntimeError(f"Training repo directory NOT FOUND: {TRAINING_REPO_ROOT}")
     if not os.path.isfile(RUN_SCRIPT):
-        msg = f"run_centralized.py NOT FOUND: {RUN_SCRIPT}"
-        logger.error(msg)
-        raise RuntimeError(msg)
-    logger.info(f"  ✓ run_centralized.py exists")
-
+        raise RuntimeError(f"run_centralized.py NOT FOUND: {RUN_SCRIPT}")
     if not os.path.isfile(TRAINING_PYTHON) and not shutil.which(TRAINING_PYTHON):
-        msg = f"Python interpreter NOT FOUND: {TRAINING_PYTHON}"
-        logger.error(msg)
-        raise RuntimeError(msg)
-    logger.info(f"  ✓ Python interpreter exists")
+        raise RuntimeError(f"Python interpreter NOT FOUND: {TRAINING_PYTHON}")
+    logger.info("  ✓ All paths verified")
 
-
+    # ── STEP 2: Check torch ───────────────────────────────────────────────
     logger.info("[STEP 2] Checking if TRAINING_PYTHON can import torch...")
     try:
         check = subprocess.run(
@@ -102,29 +91,31 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
         if check.returncode == 0:
             logger.info(f"  ✓ torch {check.stdout.strip()} available")
         else:
-            msg = (
+            raise RuntimeError(
                 f"TRAINING_PYTHON cannot import torch!\n"
                 f"  Python: {TRAINING_PYTHON}\n"
                 f"  STDERR: {check.stderr.strip()}"
             )
-            logger.error(msg)
-            raise RuntimeError(msg)
     except subprocess.TimeoutExpired:
         logger.warning("  ⚠ torch check timed out — proceeding anyway")
 
+    # ── STEP 3: Create experiment directory ──────────────────────────────
     exp_base = os.environ.get("CENTRALIZED_WEB_DIR", "/raid/tin_trungchau/tmp")
     os.makedirs(exp_base, exist_ok=True)
     exp_dir = tempfile.mkdtemp(prefix="centralized_web_", dir=exp_base)
     logger.info(f"[STEP 3] Experiment directory created: {exp_dir}")
 
+    # ── STEP 4: Build command ─────────────────────────────────────────────
     internal_model = MODEL_NAME_MAP.get(inp.model_name, inp.model_name.lower())
     logger.info(f"[STEP 4] Model mapping: {inp.model_name} -> {internal_model}")
+
+    # Quote paths in case they contain spaces
+    csv_path_arg = f'"{inp.csv_path}"' if inp.csv_path else ""
 
     cmd = [
         "bash", "-c",
         "source /home/tin_trungchau/miniconda3/etc/profile.d/conda.sh && "
         "conda activate flwr39 && "
-        # Pick the GPU with most free memory (same as experiments_centralized1.sh)
         "export CUDA_VISIBLE_DEVICES=$(nvidia-smi --query-gpu=index,memory.used "
         "--format=csv,noheader,nounits | sort -t',' -k2 -n | head -1 | cut -d',' -f1 | tr -d ' ') && "
         "echo \"Selected GPU: $CUDA_VISIBLE_DEVICES\" && "
@@ -136,7 +127,8 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
         f"--batch-size {inp.batch_size} "
         f"--seq-len {inp.seq_len} "
         f"--dropout {inp.dropout_rate} "
-        f"--model {internal_model}"
+        f"--model {internal_model} "
+        + (f"--data-path {csv_path_arg}" if csv_path_arg else "")
     ]
 
     env = os.environ.copy()
@@ -144,72 +136,46 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     env["PYTHONPATH"] = TRAINING_REPO_ROOT + (
         os.pathsep + existing_pypath if existing_pypath else ""
     )
-    env["CUDA_VISIBLE_DEVICES"] = os.environ.get("CUDA_VISIBLE_DEVICES", "0")  
+    env["CUDA_VISIBLE_DEVICES"] = os.environ.get("CUDA_VISIBLE_DEVICES", "0")
 
-    logger.info(f"[STEP 4] Full command:")
-    logger.info(f"  {' '.join(cmd)}")
+    logger.info(f"[STEP 4] Full command: {' '.join(cmd)}")
     logger.info(f"  cwd: {TRAINING_REPO_ROOT}")
-    logger.info(f"  PYTHONPATH: {env['PYTHONPATH']}")
 
-
+    # ── STEP 5: Launch subprocess ─────────────────────────────────────────
     logger.info("=" * 70)
     logger.info("[STEP 5] LAUNCHING run_centralized.py ...")
     logger.info("=" * 70)
-
     try:
         result = subprocess.run(
-        cmd,
-        cwd=TRAINING_REPO_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=3600 * 6,
-        stdin=subprocess.DEVNULL,
-        # no env= needed, bash -c handles it
-    )
+            cmd,
+            cwd=TRAINING_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=3600 * 6,
+            stdin=subprocess.DEVNULL,
+            env=env,
+        )
     except subprocess.TimeoutExpired:
-        logger.error("[STEP 5] ✗ TIMEOUT — training exceeded 6 hours")
         raise RuntimeError("Training timed out after 6 hours")
     except FileNotFoundError as e:
-        logger.error(f"[STEP 5] ✗ FileNotFoundError: {e}")
         raise RuntimeError(f"Could not launch: {e}")
 
     logger.info(f"[STEP 6] Subprocess finished. Return code: {result.returncode}")
-
     if result.stdout:
-        # Log last N lines of stdout
-        stdout_lines = result.stdout.strip().split("\n")
-        logger.info(f"  STDOUT ({len(stdout_lines)} lines, showing last 30):")
-        for line in stdout_lines[-30:]:
-            logger.info(f"    | {line}")
-
+        logger.info(f"  STDOUT (last 2000 chars):\n{result.stdout[-2000:]}")
     if result.stderr:
-        stderr_lines = result.stderr.strip().split("\n")
-        logger.warning(f"  STDERR ({len(stderr_lines)} lines, showing last 20):")
-        for line in stderr_lines[-20:]:
-            logger.warning(f"    | {line}")
+        logger.info(f"  STDERR (last 2000 chars):\n{result.stderr[-2000:]}")
 
     if result.returncode != 0:
-        logger.error(f"[STEP 6] ✗ TRAINING FAILED (exit code {result.returncode})")
         raise RuntimeError(
             f"run_centralized.py exited with code {result.returncode}.\n"
-            f"STDERR: {result.stderr[-1000:] if result.stderr else 'empty'}"
+            f"STDERR: {result.stderr[-2000:] if result.stderr else 'empty'}"
         )
-
     logger.info("[STEP 6] ✓ Training completed successfully")
 
-    logger.info(f"[STEP 7] Experiment directory contents:")
-    for root, dirs, files in os.walk(exp_dir):
-        level = root.replace(exp_dir, "").count(os.sep)
-        indent = "  " * (level + 1)
-        logger.info(f"{indent}{os.path.basename(root)}/")
-        sub_indent = "  " * (level + 2)
-        for f in files:
-            fpath = os.path.join(root, f)
-            size = os.path.getsize(fpath)
-            logger.info(f"{sub_indent}{f} ({size:,} bytes)")
-
+    # ── STEP 7: Parse training_summary.csv ───────────────────────────────
     summary_path = os.path.join(exp_dir, "training_summary.csv")
-    logger.info(f"[STEP 8] Looking for: {summary_path}")
+    logger.info(f"[STEP 7] Looking for: {summary_path}")
 
     if not os.path.exists(summary_path):
         log_path = os.path.join(exp_dir, "training.log")
@@ -217,89 +183,77 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
             with open(log_path) as f:
                 log_tail = f.readlines()[-20:]
             logger.error(f"  training.log tail:\n{''.join(log_tail)}")
-        raise RuntimeError(f"No training_summary.csv in {exp_dir}")
+        raise RuntimeError(f"No training_summary.csv found in {exp_dir}")
 
     df_summary = pd.read_csv(summary_path)
     logger.info(f"  ✓ Loaded training_summary.csv: {len(df_summary)} rows")
     logger.info(f"  Columns: {list(df_summary.columns)}")
-    logger.info(f"  Last row:\n{df_summary.iloc[-1].to_string()}")
 
     if df_summary.empty:
         raise RuntimeError("training_summary.csv is empty")
 
-    # Best round by lowest val_loss
+    # Best round = lowest val_loss
     best_idx = df_summary["val_loss"].idxmin()
     best_row = df_summary.loc[best_idx]
     best_round = int(best_row["round"])
-
-    mae = round(float(best_row["test_mae"]), 4)
+    mae  = round(float(best_row["test_mae"]),  4)
     rmse = round(float(best_row["test_rmse"]), 4)
+    logger.info(f"  Best round: {best_round} | MAE: {mae} | RMSE: {rmse}")
 
-    logger.info(f"  Best round: {best_round}")
-    logger.info(f"  val_loss:   {best_row['val_loss']:.6f}")
-    logger.info(f"  test_mae:   {mae}")
-    logger.info(f"  test_rmse:  {rmse}")
-
-    pred_len = inp.prediction_length
+    # ── STEP 8: Parse predictions ─────────────────────────────────────────
+    pred_len    = inp.prediction_length
     predictions: list[float] = []
-    actuals: list[float] = []
+    actuals:     list[float] = []
 
     pred_dir = os.path.join(exp_dir, "predictions")
-    test_csv = os.path.join(pred_dir, f"client0_round{best_round}_test.csv")
-    logger.info(f"[STEP 9] Looking for predictions: {test_csv}")
-
-    if os.path.exists(test_csv):
-        df_pred = pd.read_csv(test_csv)
-        logger.info(f"  ✓ Loaded {test_csv}: {len(df_pred)} rows")
-        logger.info(f"  Columns: {list(df_pred.columns)}")
-
-        if len(df_pred) > 0:
-            last_sample = df_pred.iloc[-1]
-            pred_cols = [f"pred_t{t}" for t in range(pred_len)]
-            true_cols = [f"true_t{t}" for t in range(pred_len)]
-
-            missing_pred = [c for c in pred_cols if c not in df_pred.columns]
-            missing_true = [c for c in true_cols if c not in df_pred.columns]
-            if missing_pred:
-                logger.warning(f"  ⚠ Missing pred columns: {missing_pred}")
-            if missing_true:
-                logger.warning(f"  ⚠ Missing true columns: {missing_true}")
-
-            predictions = [round(float(last_sample[c]), 4) for c in pred_cols if c in df_pred.columns]
-            actuals = [round(float(last_sample[c]), 4) for c in true_cols if c in df_pred.columns]
-
-            logger.info(f"  predictions (first 5): {predictions[:5]}")
-            logger.info(f"  actuals     (first 5): {actuals[:5]}")
+    # run_centralized.py saves: predictions/centralized_round{N}_test.csv
+    # or: predictions/client0_round{N}_test.csv  (same helper as federated)
+    for prefix in [f"centralized_round{best_round}", f"client0_round{best_round}"]:
+        test_csv = os.path.join(pred_dir, f"{prefix}_test.csv")
+        if os.path.exists(test_csv):
+            logger.info(f"[STEP 8] Loading predictions: {test_csv}")
+            df_pred = pd.read_csv(test_csv)
+            if len(df_pred) > 0:
+                # Take the last sample's horizon predictions
+                last_sample = df_pred.iloc[-1]
+                pred_cols = [f"pred_t{t}" for t in range(pred_len)]
+                true_cols = [f"true_t{t}" for t in range(pred_len)]
+                # Fallback: single-column format
+                if not any(c in df_pred.columns for c in pred_cols):
+                    if "predicted" in df_pred.columns:
+                        predictions = [round(float(v), 4) for v in df_pred["predicted"].values[:pred_len]]
+                    if "actual" in df_pred.columns:
+                        actuals = [round(float(v), 4) for v in df_pred["actual"].values[:pred_len]]
+                else:
+                    predictions = [round(float(last_sample[c]), 4) for c in pred_cols if c in df_pred.columns]
+                    actuals     = [round(float(last_sample[c]), 4) for c in true_cols if c in df_pred.columns]
+            break
     else:
+        logger.warning(f"[STEP 8] No predictions file found in {pred_dir}")
         if os.path.isdir(pred_dir):
-            available = os.listdir(pred_dir)
-            logger.warning(f"  ⚠ File not found. Available in predictions/: {available[:20]}")
-        else:
-            logger.warning(f"  ⚠ predictions/ directory does not exist")
+            logger.warning(f"  Available: {os.listdir(pred_dir)[:20]}")
 
-    mape = None
-    if actuals and predictions and len(actuals) == len(predictions):
-        mape_vals = [abs((a - p) / a) for a, p in zip(actuals, predictions) if a != 0]
-        if mape_vals:
-            mape = round(100.0 * sum(mape_vals) / len(mape_vals), 2)
+    # ── STEP 9: Build forecast from training_summary rows (fallback) ──────
+    # If no predictions file, synthesise from the per-round test metrics so
+    # the frontend still gets a graph.
+    if not predictions:
+        logger.info("[STEP 9] No predictions CSV — building forecast from training_summary rows")
+        for _, row in df_summary.iterrows():
+            predictions.append(round(float(row.get("test_mae", 0)), 4))
+        actuals = []   # nothing to show as actuals in this fallback
 
     elapsed = round(time.time() - start, 2)
-
     logger.info("=" * 70)
     logger.info("TRAINING COMPLETE — RETURNING RESULTS")
-    logger.info(f"  MAE:  {mae}")
-    logger.info(f"  RMSE: {rmse}")
-    logger.info(f"  MAPE: {mape}")
-    logger.info(f"  Time: {elapsed}s")
-    logger.info(f"  Predictions: {len(predictions)} values")
-    logger.info(f"  Actuals:     {len(actuals)} values")
+    logger.info(f"  MAE:  {mae}  |  RMSE: {rmse}")
+    logger.info(f"  Time: {elapsed}s  |  Predictions: {len(predictions)}")
     logger.info("=" * 70)
 
     return TrainingOutput(
         mae=mae,
         rmse=rmse,
-        mape=mape,
         training_time_seconds=elapsed,
         predictions=predictions,
-        actuals=actuals,
+        actuals=actuals if actuals else None,
+        exp_dir=exp_dir,        # passed through so service can expose download links
     )

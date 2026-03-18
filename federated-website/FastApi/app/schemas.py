@@ -16,10 +16,6 @@ from typing import List, Optional, Dict, Any
 from enum import Enum
 
 
-# ---------------------------------------------------------------------------
-# Enums - valid configuration values
-# ---------------------------------------------------------------------------
-
 class TrainingModelName(str, Enum):
     GPT4TS = "GPT4TS"
     GPT4TS_LINEAR = "GPT4TS_LINEAR"
@@ -115,7 +111,6 @@ class TrainingMetrics(BaseModel):
     """Evaluation metrics returned from the training module."""
     mae: float = Field(description="Mean Absolute Error")
     rmse: float = Field(description="Root Mean Squared Error")
-    mape: Optional[float] = Field(default=None, description="Mean Absolute Percentage Error (%)")
 
 
 class ForecastPoint(BaseModel):
@@ -139,6 +134,8 @@ class TrainingResult(BaseModel):
     training_time_seconds: float
     metrics: TrainingMetrics
     forecast: List[ForecastPoint]
+    download_training_summary: Optional[str] = None   # URL path
+    download_timing_summary:   Optional[str] = None   # URL path
 
 
 class TrainRequest(BaseModel):
@@ -199,10 +196,11 @@ class TrainingOutput(BaseModel):
     """
     mae: float
     rmse: float
-    mape: Optional[float] = None
+    # mape intentionally omitted
     training_time_seconds: float
     predictions: List[float]
     actuals: Optional[List[float]] = None
+    exp_dir: Optional[str] = None     
 
 
 class FederatedTrainingInput(BaseModel):
@@ -235,10 +233,10 @@ class FederatedTrainingOutput(BaseModel):
     """
     mae: float
     rmse: float
-    mape: Optional[float] = None
     training_time_seconds: float
     predictions: List[float]
     actuals: Optional[List[float]] = None
     best_round: Optional[int] = None
+    exp_dir: Optional[str] = None
     num_clients: Optional[int] = None
     federated_algorithm: Optional[str] = None

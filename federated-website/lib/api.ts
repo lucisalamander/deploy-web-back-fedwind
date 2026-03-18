@@ -12,9 +12,6 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"
 
-// ============================================================
-// Generic fetch wrapper
-// ============================================================
 
 async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`
@@ -27,9 +24,6 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
   return response.json()
 }
 
-// ============================================================
-// Types  (mirror FastAPI schemas)
-// ============================================================
 
 export interface HealthResponse {
   status: string
@@ -68,7 +62,6 @@ export interface TrainingConfig {
 export interface TrainingMetrics {
   mae: number
   rmse: number
-  mape: number | null
 }
 
 export interface ForecastPoint {
@@ -87,6 +80,8 @@ export interface TrainingResult {
   training_time_seconds: number
   metrics: TrainingMetrics
   forecast: ForecastPoint[]
+  download_training_summary?: string | null
+  download_timing_summary?: string | null
 }
 
 export interface FileListItem {

@@ -143,8 +143,17 @@ def start_training(filename: str, config: TrainingConfig) -> TrainingResult:
             actual=actual,
         ))
 
+    exp_dir = getattr(output, "exp_dir", None)
+    dl_training = dl_timing = None
+    if exp_dir:
+        # Encode exp_dir as a query param for the download router
+        import urllib.parse
+        enc = urllib.parse.quote(exp_dir, safe="")
+        dl_training = f"/api/download/training_summary?exp_dir={enc}"
+        dl_timing   = f"/api/download/timing_summary?exp_dir={enc}"
+
     mode_label = "Federated" if is_federated else "Centralized"
-    algo_info = f" ({config.federated_algorithm.value})" if is_federated else ""
+    algo_info  = f" ({config.federated_algorithm.value})" if is_federated else ""
 
     return TrainingResult(
         success=True,
@@ -162,4 +171,6 @@ def start_training(filename: str, config: TrainingConfig) -> TrainingResult:
             mape=output.mape,
         ),
         forecast=forecast,
+        download_training_summary=dl_training,
+        download_timing_summary=dl_timing,
     )

@@ -56,8 +56,9 @@ import {
   YAxis,
   CartesianGrid,
   Legend,
+  ResponsiveContainer,
+  Tooltip,
 } from "recharts"
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 
 // Mock data for wind speed demonstration (removed power data)
 const mockForecastData = [
@@ -839,22 +840,22 @@ const renderConversationNode = (
         </section>
       )}
 
-      {/* Training Success (Centralized Mode) */}
-      {trainingResult && (
-        <section className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
-          <div className="rounded-lg border border-green-200 bg-green-50 p-4 flex items-start gap-3">
-            <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="font-semibold text-green-800">Training Complete</h4>
-              <p className="text-sm text-green-700">
-                {trainingResult.message} | MAE: {trainingResult.metrics.mae} | RMSE: {trainingResult.metrics.rmse}
-                {trainingResult.metrics.mape != null && ` | MAPE: ${trainingResult.metrics.mape}%`}
-                {" | Time: "}{trainingResult.training_time_seconds}s
-              </p>
-            </div>
-          </div>
-        </section>
-      )}
+      {/* Training Success banner */}
+{trainingResult && (
+  <section className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
+    <div className="rounded-lg border border-green-200 bg-green-50 p-4 flex items-start gap-3">
+      <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+      <div>
+        <h4 className="font-semibold text-green-800">Training Complete</h4>
+        <p className="text-sm text-green-700">
+          {trainingResult.message} | MAE: {trainingResult.metrics.mae} m/s |{" "}
+          RMSE: {trainingResult.metrics.rmse} m/s |{" "}
+          Time: {trainingResult.training_time_seconds}s
+        </p>
+      </div>
+    </div>
+  </section>
+)}
 
 
 
@@ -1228,7 +1229,7 @@ const renderConversationNode = (
               <CardContent>
                 {showResults ? (
                   <div className="space-y-6">
-                    {/* Stats Row - Real Metrics from Training */}
+                    {/* Stats Row - Only MAE + RMSE + Time */}
                     <div className="grid gap-4 sm:grid-cols-3">
                       <div className="rounded-lg border border-border bg-muted/30 p-4">
                         <div className="flex items-center gap-2 text-muted-foreground text-sm">
@@ -1242,16 +1243,6 @@ const renderConversationNode = (
                       </div>
                       <div className="rounded-lg border border-border bg-muted/30 p-4">
                         <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                          <TrendingUp className="h-4 w-4" />
-                          MAPE
-                        </div>
-                        <div className="mt-1 text-2xl font-bold text-foreground">
-                          {trainingResult?.metrics.mape != null ? `${trainingResult.metrics.mape}%` : "-- %"}
-                        </div>
-                        <div className="text-xs text-muted-foreground">Mean Absolute % Error</div>
-                      </div>
-                      <div className="rounded-lg border border-border bg-muted/30 p-4">
-                        <div className="flex items-center gap-2 text-muted-foreground text-sm">
                           <BarChart3 className="h-4 w-4" />
                           RMSE
                         </div>
@@ -1259,6 +1250,16 @@ const renderConversationNode = (
                           {trainingResult ? `${trainingResult.metrics.rmse} m/s` : "-- m/s"}
                         </div>
                         <div className="text-xs text-muted-foreground">Root Mean Square Error</div>
+                      </div>
+                      <div className="rounded-lg border border-border bg-muted/30 p-4">
+                        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                          <Clock className="h-4 w-4" />
+                          Time
+                        </div>
+                        <div className="mt-1 text-2xl font-bold text-foreground">
+                          {trainingResult ? `${trainingResult.training_time_seconds}s` : "--s"}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Training Duration</div>
                       </div>
                     </div>
 
@@ -1300,58 +1301,159 @@ const renderConversationNode = (
                       <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
                         <Wind className="h-4 w-4 text-primary" />
                         Wind Speed Forecast
+                        {trainingResult && trainingResult.forecast.length > 0 && (
+                          <span className="text-xs font-normal text-muted-foreground ml-1">
+                            — {trainingResult.forecast.length} steps (real data)
+                          </span>
+                        )}
                       </h4>
-                      <ChartContainer
-                        config={{
-                          actual: {
-                            label: "Actual",
-                            color: "hsl(var(--chart-1))",
-                          },
-                          predicted: {
-                            label: "Predicted",
-                            color: "hsl(var(--chart-2))",
-                          },
-                        }}
-                        className="h-[280px] w-full"
-                      >
-                        <LineChart data={
-                          trainingResult
-                            ? trainingResult.forecast.map((p) => ({
-                                hour: `Step ${p.step}`,
-                                actual: p.actual,
-                                predicted: p.predicted,
-                              }))
-                            : mockForecastData
-                        }>
-                          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                          <XAxis dataKey="hour" tick={{ fontSize: 12 }} className="text-muted-foreground" />
-                          <YAxis
-                            tick={{ fontSize: 12 }}
-                            className="text-muted-foreground"
-                            label={{ value: "m/s", angle: -90, position: "insideLeft", fontSize: 12 }}
-                          />
-                          <ChartTooltip content={<ChartTooltipContent />} />
-                          <Legend />
-                          <Line
-                            type="monotone"
-                            dataKey="actual"
-                            stroke="var(--color-actual)"
-                            strokeWidth={2}
-                            dot={{ r: 3 }}
-                            name="Actual"
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="predicted"
-                            stroke="var(--color-predicted)"
-                            strokeWidth={2}
-                            strokeDasharray="5 5"
-                            dot={{ r: 3 }}
-                            name="Predicted"
-                          />
-                        </LineChart>
-                      </ChartContainer>
+
+                      <div style={{ width: "100%", height: 280 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart
+                            data={
+                              trainingResult && trainingResult.forecast.length > 0
+                                ? trainingResult.forecast.map((p) => ({
+                                    label: `S${p.step}`,
+                                    predicted: p.predicted,
+                                    ...(p.actual !== null && p.actual !== undefined
+                                      ? { actual: p.actual }
+                                      : {}),
+                                  }))
+                                : mockForecastData.map((d) => ({
+                                    label: d.hour,
+                                    predicted: d.predicted,
+                                    actual: d.actual,
+                                  }))
+                            }
+                            margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                            <XAxis
+                              dataKey="label"
+                              tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                              interval="preserveStartEnd"
+                            />
+                            <YAxis
+                              tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                              label={{
+                                value: "m/s",
+                                angle: -90,
+                                position: "insideLeft",
+                                fontSize: 12,
+                                fill: "hsl(var(--muted-foreground))",
+                              }}
+                              domain={["auto", "auto"]}
+                            />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: "hsl(var(--background))",
+                                border: "1px solid hsl(var(--border))",
+                                borderRadius: "6px",
+                                fontSize: "12px",
+                                color: "hsl(var(--foreground))",
+                              }}
+                              formatter={(value: number, name: string) => [
+                                `${Number(value).toFixed(4)} m/s`,
+                                name === "predicted" ? "Predicted" : "Actual",
+                              ]}
+                              labelFormatter={(label) => `${label}`}
+                            />
+                            <Legend wrapperStyle={{ fontSize: "12px" }} />
+                            {(!trainingResult ||
+                              trainingResult.forecast.some(
+                                (p) => p.actual !== null && p.actual !== undefined,
+                              )) && (
+                              <Line
+                                type="monotone"
+                                dataKey="actual"
+                                stroke="#A23B72"
+                                strokeWidth={2}
+                                dot={false}
+                                name="Actual"
+                                connectNulls={false}
+                                isAnimationActive={false}
+                              />
+                            )}
+                            <Line
+                              type="monotone"
+                              dataKey="predicted"
+                              stroke="#2E86AB"
+                              strokeWidth={2}
+                              strokeDasharray="5 5"
+                              dot={false}
+                              name="Predicted"
+                              isAnimationActive={false}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
+
+                    {/* Download Results */}
+                    {trainingResult && (
+                      trainingResult.download_training_summary ||
+                      trainingResult.download_timing_summary
+                    ) && (
+                      <div className="rounded-lg border border-border bg-muted/20 p-4">
+                        <h4 className="font-semibold text-foreground text-sm mb-3 flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-primary" />
+                          Download Training Results
+                        </h4>
+                        <div className="flex flex-wrap gap-3">
+                          {trainingResult?.download_training_summary && (
+                            <a
+                              href={`http://localhost:8001${trainingResult.download_training_summary}`}
+                              download="training_summary.csv"
+                              className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted/50 transition-colors"
+                            >
+                              {/* inline SVG so no extra import needed */}
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-4 w-4 text-primary"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="7 10 12 15 17 10" />
+                                <line x1="12" y1="15" x2="12" y2="3" />
+                              </svg>
+                              training_summary.csv
+                            </a>
+                          )}
+                          {trainingResult?.download_timing_summary && (
+                            <a
+                              href={`http://localhost:8001${trainingResult.download_timing_summary}`}
+                              download="timing_summary.csv"
+                              className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted/50 transition-colors"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-4 w-4 text-primary"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="7 10 12 15 17 10" />
+                                <line x1="12" y1="15" x2="12" y2="3" />
+                              </svg>
+                              timing_summary.csv
+                            </a>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Per-round metrics and wall-clock timing from this training run.
+                        </p>
+                      </div>
+                    )}
 
                     {/* Training Info (if complete) */}
                     {trainingResult && (
