@@ -109,8 +109,46 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     internal_model = MODEL_NAME_MAP.get(inp.model_name, inp.model_name.lower())
     logger.info(f"[STEP 4] Model mapping: {inp.model_name} -> {internal_model}")
 
-    # Quote paths in case they contain spaces
-    csv_path_arg = f'"{inp.csv_path}"' if inp.csv_path else ""
+    # ── STEP 4a: Prepare uploaded CSV for the training pipeline ─────────
+    # The dataloader expects NASA-format files (with -END HEADER- marker).
+    # User-uploaded CSVs are clean CSVs, so we prepend the NASA header and
+    # place the file into datasets/custom/ as all 5 KZMET client files.
+    # Originals are backed up and restored after training.
+    dataset_dir = os.path.join(TRAINING_REPO_ROOT, "..", "datasets", "custom")
+    dataset_dir = os.path.abspath(dataset_dir)
+    kzmet_files = [
+        "nasa_almaty.csv", "nasa_zhezkazgan.csv", "nasa_aktau.csv",
+        "nasa_taraz.csv", "nasa_aktobe.csv",
+    ]
+    backups = {}  # original_path -> backup_path
+
+    if inp.csv_path and os.path.isfile(inp.csv_path):
+        # Read the uploaded CSV content
+        with open(inp.csv_path, "r") as f:
+            csv_content = f.read()
+
+        # Prepend NASA header if not already present
+        if "-END HEADER-" not in csv_content:
+            nasa_header = (
+                "-BEGIN HEADER-\n"
+                "NASA/POWER Source — user upload\n"
+                "-END HEADER-\n"
+            )
+            csv_content = nasa_header + csv_content
+
+        # Backup originals and write prepared file as all 5 client files
+        os.makedirs(dataset_dir, exist_ok=True)
+        for fname in kzmet_files:
+            orig = os.path.join(dataset_dir, fname)
+            if os.path.exists(orig):
+                bak = orig + ".bak"
+                shutil.copy2(orig, bak)
+                backups[orig] = bak
+            with open(orig, "w") as f:
+                f.write(csv_content)
+        logger.info(f"[STEP 4a] Prepared uploaded CSV into {dataset_dir} ({len(backups)} backups)")
+    else:
+        logger.info("[STEP 4a] No csv_path — training on existing KZMET data")
 
     cmd = [
         "bash", "-c",
@@ -128,7 +166,7 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
         f"--seq-len {inp.seq_len} "
         f"--dropout {inp.dropout_rate} "
         f"--model {internal_model} "
-        + (f"--data-path {csv_path_arg}" if csv_path_arg else "")
+        f"--dataset-name KZMET"
     ]
 
     env = os.environ.copy()
@@ -159,6 +197,15 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
         raise RuntimeError("Training timed out after 6 hours")
     except FileNotFoundError as e:
         raise RuntimeError(f"Could not launch: {e}")
+    finally:
+        # Restore original KZMET dataset files
+        for orig, bak in backups.items():
+            try:
+                shutil.move(bak, orig)
+            except Exception as restore_err:
+                logger.error(f"Failed to restore {orig} from {bak}: {restore_err}")
+        if backups:
+            logger.info(f"[STEP 5] Restored {len(backups)} original dataset files")
 
     logger.info(f"[STEP 6] Subprocess finished. Return code: {result.returncode}")
     if result.stdout:

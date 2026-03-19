@@ -168,7 +168,6 @@ def start_training(filename: str, config: TrainingConfig) -> TrainingResult:
         metrics=TrainingMetrics(
             mae=output.mae,
             rmse=output.rmse,
-            mape=output.mape,
         ),
         forecast=forecast,
         download_training_summary=dl_training,
