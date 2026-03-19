@@ -30,7 +30,7 @@ declare -a NUM_CLIENTS=(5)
 # ============================================================================
 # STRATEGY & OPTIMIZATION PARAMETERS
 # ============================================================================
-declare -a STRATEGY=(fedavg)
+declare -a STRATEGY=(fedprox)
 declare -a PROXIMAL_MU=(0.01)
 declare -a WARMUP_ROUNDS=(1)
 declare -a WEIGHT_DECAY=(0.01)
