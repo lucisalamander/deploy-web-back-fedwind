@@ -1,3 +1,5 @@
+import os
+import sys
 import numpy as np
 import torch
 import torch.nn as nn
@@ -5,7 +7,12 @@ import torch.nn as nn
 from einops import rearrange
 
 from transformers import AutoModel
-from peft import LoraConfig, get_peft_model, TaskType
+
+_models_dir = os.path.dirname(os.path.abspath(__file__))
+if _models_dir not in sys.path:
+    sys.path.insert(0, _models_dir)
+
+from peft_utils import apply_peft, freeze_backbone
 
 # --------- Conv + MLP Patch Embedding ---------
 class ConvMLPPatchEmbedding(nn.Module):
@@ -59,26 +66,14 @@ class Llama_Linear(nn.Module):
                 use_safetensors=True,
             )
             self.llama.layers = self.llama.layers[:configs.llm_layers]
-            if getattr(configs, "use_lora", False):
-                target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
-                self.llama = self._apply_lora(
-                    self.llama,
-                    r=getattr(configs, "lora_r", 16),
-                    alpha=getattr(configs, "lora_alpha", 32),
-                    dropout=getattr(configs, "lora_dropout", 0.1),
-                    target_modules=target_modules,
-                )
-            print("llama= {}".format(self.llama))
+            self.llama = apply_peft(self.llama, configs, ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"])
+            # print("llama= {}".format(self.llama))
 
         self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
         self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)
 
-        if configs.freeze and configs.pretrain and configs.is_llama:
-            for i, (name, param) in enumerate(self.llama.named_parameters()):
-                if 'norm' in name.lower() or 'embed' in name.lower():
-                    param.requires_grad = True
-                else:
-                    param.requires_grad = False
+        if configs.is_llama:
+            freeze_backbone(self.llama, configs, ['norm', 'embed'])
 
         self.to(device)
         for layer in (self.llama, self.in_layer, self.out_layer):
@@ -135,7 +130,8 @@ class Llama_Nonlinear(nn.Module):
                 use_safetensors=True,
             )
             self.llama.layers = self.llama.layers[:configs.llm_layers]
-            print("llama= {}".format(self.llama))
+            self.llama = apply_peft(self.llama, configs, ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"])
+            # print("llama= {}".format(self.llama))
 
         # Dropout for regularization
         dropout_rate = getattr(configs, "dropout", 0.15)
@@ -156,13 +152,8 @@ class Llama_Nonlinear(nn.Module):
         self.dropout_llama = nn.Dropout(p=dropout_rate)
         self.dropout_pre_out = nn.Dropout(p=dropout_rate)
 
-        # freeze Llama if requested
-        if configs.freeze and configs.pretrain and configs.is_llama:
-            for name, param in self.llama.named_parameters():
-                if ("lora_" in name) or ('norm' in name.lower() or 'embed' in name.lower()):
-                    param.requires_grad = True
-                else:
-                    param.requires_grad = False
+        if configs.is_llama:
+            freeze_backbone(self.llama, configs, ['norm', 'embed'])
 
         # move modules to device
         self.to(device)
@@ -204,20 +195,3 @@ class Llama_Nonlinear(nn.Module):
         outputs = outputs + means
         return outputs
 
-    def _apply_lora(self, model, r=16, alpha=32, dropout=0.1, target_modules=None):
-        if target_modules is None:
-            target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
-        lora_cfg = LoraConfig(
-            r=r,
-            lora_alpha=alpha,
-            lora_dropout=dropout,
-            target_modules=target_modules,
-            bias="none",
-            # task_type=TaskType.FEATURE_EXTRACTION,
-        )
-        model = get_peft_model(model, lora_cfg)
-        try:
-            model.print_trainable_parameters()
-        except Exception:
-            pass
-        return model

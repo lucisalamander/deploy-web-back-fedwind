@@ -1,3 +1,5 @@
+import os
+import sys
 import numpy as np
 import torch
 import torch.nn as nn
@@ -5,7 +7,12 @@ import torch.nn as nn
 from einops import rearrange
 
 from transformers import AutoModel
-from peft import LoraConfig, get_peft_model, TaskType
+
+_models_dir = os.path.dirname(os.path.abspath(__file__))
+if _models_dir not in sys.path:
+    sys.path.insert(0, _models_dir)
+
+from peft_utils import apply_peft, freeze_backbone
 
 # --------- Conv + MLP Patch Embedding ---------
 class ConvMLPPatchEmbedding(nn.Module):
@@ -65,12 +72,8 @@ class BART_Linear(nn.Module):
         self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
         self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)
 
-        if configs.freeze and configs.pretrain and configs.is_bart:
-            for i, (name, param) in enumerate(self.bart.named_parameters()):
-                if 'ln' in name or 'wpe' in name:
-                    param.requires_grad = True
-                else:
-                    param.requires_grad = False
+        if configs.is_bart:
+            freeze_backbone(self.bart, configs, ['layernorm', 'layer_norm', 'final_layer_norm'])
 
         self.to(device)
         for layer in (self.bart, self.in_layer, self.out_layer):
@@ -127,17 +130,8 @@ class BART_Nonlinear(nn.Module):
                 use_safetensors=True,
                 force_download=False,
             )
-            self.bart.encoder.layers = self.bart.encoder.layers[:configs.llm_layers] 
-            if getattr(configs, "use_lora", False):
-                target_modules = ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"]
-                self.bart = self._apply_lora(
-                    self.bart,
-                    r=getattr(configs, "lora_r", 16),
-                    alpha=getattr(configs, "lora_alpha", 32),
-                    dropout=getattr(configs, "lora_dropout", 0.1),
-                    target_modules=target_modules,
-                )
-            # print("bart= {}".format(self.bart))
+            self.bart.encoder.layers = self.bart.encoder.layers[:configs.llm_layers]
+            self.bart = apply_peft(self.bart, configs, ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"])
 
         # Dropout for regularization
         dropout_rate = getattr(configs, "dropout", 0.15)
@@ -158,15 +152,8 @@ class BART_Nonlinear(nn.Module):
         self.dropout_bart = nn.Dropout(p=dropout_rate)
         self.dropout_pre_out = nn.Dropout(p=dropout_rate)
 
-        # freeze Bart if requested
-        if configs.freeze and configs.pretrain and configs.is_bart:
-            for name, param in self.bart.named_parameters():
-                keep_train = ("lora_" in name) or any(k in name for k in [
-                    "layernorm_embedding", "self_attn_layer_norm",
-                    "encoder.layernorm_embedding", "final_layer_norm",
-                    "layer_norm"
-                ])
-                param.requires_grad = keep_train
+        if configs.is_bart:
+            freeze_backbone(self.bart, configs, ['layernorm', 'layer_norm', 'final_layer_norm'])
 
         # move modules to device
         self.to(device)
@@ -208,20 +195,3 @@ class BART_Nonlinear(nn.Module):
         outputs = outputs + means
         return outputs
 
-    def _apply_lora(self, model, r=16, alpha=32, dropout=0.1, target_modules=None):
-        if target_modules is None:
-            target_modules = ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"]
-        lora_cfg = LoraConfig(
-            r=r,
-            lora_alpha=alpha,
-            lora_dropout=dropout,
-            target_modules=target_modules,
-            bias="none",
-            # task_type=TaskType.FEATURE_EXTRACTION,
-        )
-        model = get_peft_model(model, lora_cfg)
-        try:
-            model.print_trainable_parameters()
-        except Exception:
-            pass
-        return model

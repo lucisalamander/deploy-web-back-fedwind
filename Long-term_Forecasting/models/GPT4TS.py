@@ -15,6 +15,8 @@ Key Components:
 Reference: CME Patchformer research paper
 """
 
+import os
+import sys
 import torch
 import torch.nn as nn
 
@@ -23,13 +25,11 @@ from einops import rearrange
 
 from transformers import AutoModel
 
-try:
-    from peft import LoraConfig, get_peft_model, TaskType
-except ImportError:
-    LoraConfig = None
-    get_peft_model = None
-    TaskType = None
-    print("Warning: peft library not found. LoRA functionality will be disabled.")
+_models_dir = os.path.dirname(os.path.abspath(__file__))
+if _models_dir not in sys.path:
+    sys.path.insert(0, _models_dir)
+
+from peft_utils import apply_peft, freeze_backbone
 
 
 class ConvMLPPatchEmbedding(nn.Module):
@@ -101,7 +101,7 @@ class GPT4TS_Linear(nn.Module):
                 print("------------------no pretrain------------------")
                 self.gpt2 = GPT2Model(GPT2Config())
             self.gpt2.h = self.gpt2.h[:configs.llm_layers]
-            print("gpt2 = {}".format(self.gpt2))
+            # print("gpt2 = {}".format(self.gpt2))
 
         self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
         self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)
@@ -112,12 +112,7 @@ class GPT4TS_Linear(nn.Module):
         self.dropout_gpt = nn.Dropout(p=dropout_rate)
         self.dropout_pre_out = nn.Dropout(p=dropout_rate)
 
-        if configs.freeze and configs.pretrain:
-            for i, (name, param) in enumerate(self.gpt2.named_parameters()):
-                if 'ln' in name or 'wpe' in name:
-                    param.requires_grad = True
-                else:
-                    param.requires_grad = False
+        freeze_backbone(self.gpt2, configs, ['ln', 'wpe'])
 
         for layer in (self.gpt2, self.in_layer, self.out_layer):
             layer.to(device=device)
@@ -190,19 +185,7 @@ class GPT4TS_Nonlinear(nn.Module):
                 self.gpt2 = GPT2Model(GPT2Config())
             self.gpt2.h = self.gpt2.h[:configs.llm_layers]
 
-            # Apply LoRA if enabled
-            if getattr(configs, 'use_lora', False):
-                self.gpt2 = self._apply_lora(
-                    self.gpt2,
-                    r=getattr(configs, "lora_r", 16),
-                    alpha=getattr(configs, "lora_alpha", 32),
-                    dropout=getattr(configs, "lora_dropout", 0.1),
-                    target_modules=getattr(
-                        configs,
-                        "lora_target_modules",
-                        ["c_attn", "c_fc", "c_proj"],  # GPT-2 attention and feedforward modules
-                    ),
-                )
+            self.gpt2 = apply_peft(self.gpt2, configs, ["c_attn", "c_fc", "c_proj"])
 
         # Dropout for regularization
         dropout_rate = getattr(configs, 'dropout', 0.15)
@@ -221,13 +204,7 @@ class GPT4TS_Nonlinear(nn.Module):
         self.dropout_gpt = nn.Dropout(p=dropout_rate)
         self.dropout_pre_out = nn.Dropout(p=dropout_rate)
 
-        if configs.freeze and configs.pretrain:
-            for name, param in self.gpt2.named_parameters():
-                # Keep layer norm, positional embeddings, and LoRA parameters trainable
-                if 'lora_' in name or 'ln' in name or 'wpe' in name:
-                    param.requires_grad = True
-                else:
-                    param.requires_grad = False
+        freeze_backbone(self.gpt2, configs, ['ln', 'wpe'])
 
         for module in (getattr(self, 'gpt2', None), self.in_layer, self.out_layer):
             if module is not None:
@@ -265,46 +242,6 @@ class GPT4TS_Nonlinear(nn.Module):
         outputs = outputs + means
         return outputs
 
-    def _apply_lora(self, model, r=16, alpha=32, dropout=0.1, target_modules=None):
-        """
-        Apply LoRA (Low-Rank Adaptation) to the model.
-
-        Args:
-            model: The model to apply LoRA to
-            r: LoRA rank (lower = fewer parameters)
-            alpha: LoRA scaling parameter
-            dropout: Dropout rate for LoRA layers
-            target_modules: List of module names to apply LoRA to
-
-        Returns:
-            Model wrapped with LoRA adapters
-        """
-        if LoraConfig is None or get_peft_model is None:
-            print("Warning: peft library not available. Skipping LoRA application.")
-            return model
-
-        if target_modules is None:
-            target_modules = ["c_attn", "c_fc", "c_proj"]
-
-        lora_cfg = LoraConfig(
-            r=r,
-            lora_alpha=alpha,
-            lora_dropout=dropout,
-            target_modules=target_modules,
-            bias="none",
-            task_type=TaskType.FEATURE_EXTRACTION if TaskType is not None else None,
-        )
-        model = get_peft_model(model, lora_cfg)
-
-        # Print trainable parameters info
-        try:
-            model.print_trainable_parameters()
-        except Exception as e:
-            print(f"Could not print trainable parameters: {e}")
-
-        return model
-
-
 class GPT4TS_Nonlinear_AttnRes(nn.Module):
     """
     GPT4TS Nonlinear + AttnRes Variant
@@ -339,19 +276,7 @@ class GPT4TS_Nonlinear_AttnRes(nn.Module):
                 self.gpt2 = GPT2Model(GPT2Config())
             self.gpt2.h = self.gpt2.h[:configs.llm_layers]
 
-            # Apply LoRA if enabled
-            if getattr(configs, 'use_lora', False):
-                self.gpt2 = self._apply_lora(
-                    self.gpt2,
-                    r=getattr(configs, "lora_r", 16),
-                    alpha=getattr(configs, "lora_alpha", 32),
-                    dropout=getattr(configs, "lora_dropout", 0.1),
-                    target_modules=getattr(
-                        configs,
-                        "lora_target_modules",
-                        ["c_attn", "c_fc", "c_proj"],
-                    ),
-                )
+            self.gpt2 = apply_peft(self.gpt2, configs, ["c_attn", "c_fc", "c_proj"])
 
         # Dropout for regularization
         dropout_rate = getattr(configs, 'dropout', 0.15)
@@ -374,13 +299,7 @@ class GPT4TS_Nonlinear_AttnRes(nn.Module):
         self.attn_res_proj = nn.Linear(configs.d_model, 1, bias=False)
         self.attn_res_norm = nn.RMSNorm(configs.d_model)
 
-        if configs.freeze and configs.pretrain:
-            for name, param in self.gpt2.named_parameters():
-                # Keep layer norm, positional embeddings, and LoRA parameters trainable
-                if 'lora_' in name or 'ln' in name or 'wpe' in name:
-                    param.requires_grad = True
-                else:
-                    param.requires_grad = False
+        freeze_backbone(self.gpt2, configs, ['ln', 'wpe'])
 
         for module in (getattr(self, 'gpt2', None), self.in_layer, self.out_layer,
                        self.attn_res_proj, self.attn_res_norm):
@@ -450,31 +369,3 @@ class GPT4TS_Nonlinear_AttnRes(nn.Module):
         outputs = outputs * stdev
         outputs = outputs + means
         return outputs
-
-    def _apply_lora(self, model, r=16, alpha=32, dropout=0.1, target_modules=None):
-        """
-        Apply LoRA (Low-Rank Adaptation) to the model.
-        """
-        if LoraConfig is None or get_peft_model is None:
-            print("Warning: peft library not available. Skipping LoRA application.")
-            return model
-
-        if target_modules is None:
-            target_modules = ["c_attn", "c_fc", "c_proj"]
-
-        lora_cfg = LoraConfig(
-            r=r,
-            lora_alpha=alpha,
-            lora_dropout=dropout,
-            target_modules=target_modules,
-            bias="none",
-            task_type=TaskType.FEATURE_EXTRACTION if TaskType is not None else None,
-        )
-        model = get_peft_model(model, lora_cfg)
-
-        try:
-            model.print_trainable_parameters()
-        except Exception as e:
-            print(f"Could not print trainable parameters: {e}")
-
-        return model

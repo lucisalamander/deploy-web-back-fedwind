@@ -13,16 +13,11 @@ from my_flower_app.task import get_default_configs, Net, load_client_train, load
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-_PATH_LOGGED = False
 
 app = ClientApp()
 
 @app.train()
 def train(msg: Message, context: Context):
-    global _PATH_LOGGED
-    if not _PATH_LOGGED:
-        logging.info("[CLIENT PATH] sys.path=%s", sys.path)
-        _PATH_LOGGED = True
     # Get model parameters from train config (passed from server)
     conf = msg.content["config"]
     configs = get_default_configs(
@@ -35,6 +30,7 @@ def train(msg: Message, context: Context):
         hidden_size=conf.get("hidden_size", 16),
         kernel_size=conf.get("kernel_size", 3),
         llm_layers=conf.get("llm_layers", 4),
+        peft_method=conf.get("peft_method", "lora"),
         lora_r=conf.get("lora_r", 8),
         lora_alpha=conf.get("lora_alpha", 16),
         lora_dropout=conf.get("lora_dropout", 0.15),
@@ -171,10 +167,6 @@ def evaluate(msg: Message, context: Context):
     This is called by the server to get federated evaluation metrics.
     Evaluates on both val (20%) and test (10%) splits.
     """
-    global _PATH_LOGGED
-    if not _PATH_LOGGED:
-        logging.info("[CLIENT PATH] sys.path=%s", sys.path)
-        _PATH_LOGGED = True
     # Get model parameters from run_config (for evaluation)
     conf = context.run_config
     configs = get_default_configs(
@@ -187,6 +179,7 @@ def evaluate(msg: Message, context: Context):
         hidden_size=conf.get("hidden-size", 16),
         kernel_size=conf.get("kernel-size", 3),
         llm_layers=conf.get("llm-layers", 4),
+        peft_method=conf.get("peft-method", "lora"),
         lora_r=conf.get("lora-r", 8),
         lora_alpha=conf.get("lora-alpha", 16),
         lora_dropout=conf.get("lora-dropout", 0.15),

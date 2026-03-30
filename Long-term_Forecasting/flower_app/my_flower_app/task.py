@@ -114,6 +114,12 @@ MODEL_REGISTRY = {
     "bert_linear":      ("BERT",   "BERT_Linear",      "is_bert",  "llm",      "llm"),
     "llama_nonlinear":  ("LLAMA",  "Llama_Nonlinear",  "is_llama", "llm",      "llm"),
     "llama_linear":     ("LLAMA",  "Llama_Linear",     "is_llama", "llm",      "llm"),
+    "opt_nonlinear":    ("OPT",    "Opt_Nonlinear",    "is_opt",   "llm",      "llm"),
+    "opt_linear":       ("OPT",    "Opt_Linear",       "is_opt",   "llm",      "llm"),
+    "gemma_nonlinear":  ("GEMMA",  "Gemma_Nonlinear",  "is_gemma", "llm",      "llm"),
+    "gemma_linear":     ("GEMMA",  "Gemma_Linear",     "is_gemma", "llm",      "llm"),
+    "qwen_nonlinear":   ("QWEN",   "Qwen_Nonlinear",   "is_qwen",  "llm",      "llm"),
+    "qwen_linear":      ("QWEN",   "Qwen_Linear",      "is_qwen",  "llm",      "llm"),
     "informer":         ("Informer", "Model",         None,       "baselines","informer"),
     "patchtst":         ("PatchTST", "Model",         None,       "baselines","patchtst"),
 }
@@ -184,17 +190,20 @@ def get_default_configs(
     subtract_last=0,
     decomposition=0,
     individual=0,
-    use_lora=True  # Enable LoRA by default for federated learning
+    peft_method="lora",  # Fine-tuning strategy: "lora", "loha", "adalora", "pft", "fft"
 ):
     """
     Get model configurations.
 
     Args:
         pred_len: Prediction length (forecast horizon). REQUIRED - must be specified.
-        model: Which model to use. One of: gpt4ts_nonlinear, gpt4ts_linear,
-               bart_nonlinear, bart_linear, bert_nonlinear, bert_linear,
-               llama_nonlinear, llama_linear (default: gpt4ts_nonlinear)
-        use_lora: Whether to enable LoRA fine-tuning (default: True).
+        model: Which model to use.
+        peft_method: Fine-tuning strategy for the LLM backbone.
+            - "lora": LoRA (Low-Rank Adaptation) — default
+            - "loha": LoHA (Low-Rank Hadamard Adaptation)
+            - "adalora": AdaLoRA (Adaptive LoRA with rank allocation)
+            - "pft": Partial Fine-Tuning (freeze backbone, train LayerNorm + embeddings only)
+            - "fft": Full Fine-Tuning (all parameters trainable)
         ... other parameters are optional and have defaults matching the baseline.
     """
     if model not in MODEL_REGISTRY:
@@ -206,6 +215,15 @@ def get_default_configs(
     _, _, backbone_flag, _, model_family = MODEL_REGISTRY[model]
     is_llm = model_family == "llm"
 
+    # Override d_model to match LLM hidden_size for models that differ from default 768
+    _d_model_override = {
+        "is_opt": 512,     # facebook/opt-350m word_embed_proj_dim=512 (inputs_embeds dim)
+        "is_qwen": 1024,   # Qwen/Qwen3-0.6B hidden_size=1024
+        "is_gemma": 1536,  # google/gemma-3-270m hidden_size=1536
+    }
+    if backbone_flag in _d_model_override:
+        d_model = _d_model_override[backbone_flag]
+
     return SimpleNamespace(
         model=model,
         model_family=model_family,
@@ -213,9 +231,13 @@ def get_default_configs(
         is_bart=(backbone_flag == "is_bart"),
         is_bert=(backbone_flag == "is_bert"),
         is_llama=(backbone_flag == "is_llama"),
+        is_opt=(backbone_flag == "is_opt"),
+        is_gemma=(backbone_flag == "is_gemma"),
+        is_qwen=(backbone_flag == "is_qwen"),
         pretrain=True,
-        freeze=True,  # Freeze base LLM, only train adapters + LayerNorm
-        use_lora=(use_lora if is_llm else False),
+        freeze=(peft_method != "fft"),  # FFT unfreezes all; others freeze backbone
+        peft_method=(peft_method if is_llm else "pft"),
+        use_lora=(peft_method in ("lora", "loha", "adalora") if is_llm else False),
         # data/patching
         seq_len=seq_len,
         label_len=label_len,

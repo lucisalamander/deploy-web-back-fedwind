@@ -54,6 +54,7 @@ MD_FILES/
 # *.md
 
 node_modules/
+.env
 
 old_experiments/
 experiments*/

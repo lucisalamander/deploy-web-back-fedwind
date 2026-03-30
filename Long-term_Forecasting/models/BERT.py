@@ -1,3 +1,5 @@
+import os
+import sys
 import numpy as np
 import torch
 import torch.nn as nn
@@ -5,7 +7,12 @@ import torch.nn as nn
 from einops import rearrange
 
 from transformers import AutoModel
-from peft import LoraConfig, get_peft_model, TaskType
+
+_models_dir = os.path.dirname(os.path.abspath(__file__))
+if _models_dir not in sys.path:
+    sys.path.insert(0, _models_dir)
+
+from peft_utils import apply_peft, freeze_backbone
 
 # --------- Conv + MLP Patch Embedding ---------
 class ConvMLPPatchEmbedding(nn.Module):
@@ -62,12 +69,8 @@ class BERT_Linear(nn.Module):
         self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
         self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)
 
-        if configs.freeze and configs.pretrain and configs.is_bert:
-            for i, (name, param) in enumerate(self.bert.named_parameters()):
-                if 'ln' in name or 'wpe' in name:
-                    param.requires_grad = True
-                else:
-                    param.requires_grad = False
+        if configs.is_bert:
+            freeze_backbone(self.bert, configs, ['layernorm', 'layer_norm'])
 
         self.to(device)
         for layer in (self.bert, self.in_layer, self.out_layer):
@@ -124,18 +127,7 @@ class BERT_Nonlinear(nn.Module):
                 use_safetensors=True,
             )
             self.bert.encoder.layer = self.bert.encoder.layer[:configs.llm_layers]
-
-            target_modules = ["query", "key", "value", "dense"]
-            self.bert = self._apply_lora(
-                self.bert,
-                r=getattr(configs, "lora_r", 16),
-                alpha=getattr(configs, "lora_alpha", 32),
-                dropout=getattr(configs, "lora_dropout", 0.1),
-                target_modules=target_modules,
-                # bias="none",
-                # task_type=TaskType.SEQ_CLS,
-            )
-            # print("bert= {}".format(self.bert))
+            self.bert = apply_peft(self.bert, configs, ["query", "key", "value", "dense"])
 
         # embedding: conv + mlp patch
         self.in_layer = ConvMLPPatchEmbedding(
@@ -148,13 +140,8 @@ class BERT_Nonlinear(nn.Module):
         self.out_layer = nn.Linear(configs.d_model * self.patch_num,
                                    configs.pred_len)
 
-        # freeze Bert if requested
-        if configs.freeze and configs.pretrain and configs.is_bert:
-            for name, param in self.bert.named_parameters():
-                if ("lora_" in name) or ("LayerNorm" in name):
-                    param.requires_grad = True
-                else:
-                    param.requires_grad = False
+        if configs.is_bert:
+            freeze_backbone(self.bert, configs, ['layernorm', 'layer_norm'])
 
         # move modules to device
         self.to(device)
@@ -194,28 +181,3 @@ class BERT_Nonlinear(nn.Module):
         outputs = outputs + means
         return outputs
     
-    def _apply_lora(self, model, r=16, alpha=32, dropout=0.1, target_modules=None):
-        if target_modules is None:
-            target_modules=[
-                "attention.self.query",
-                "attention.self.key",
-                "attention.self.value",
-                "attention.output.dense",
-                "intermediate.dense",
-                "output.dense",
-            ]
-        lora_cfg = LoraConfig(
-            r=r,
-            lora_alpha=alpha,
-            lora_dropout=dropout,
-            target_modules=target_modules,
-            bias="none",
-            # task_type=TaskType.FEATURE_EXTRACTION,
-        )
-        model = get_peft_model(model, lora_cfg)
-        # Optional: show counts
-        try:
-            model.print_trainable_parameters()
-        except Exception:
-            pass
-        return model

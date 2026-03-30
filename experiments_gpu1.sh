@@ -8,16 +8,24 @@
 # automatically generate all combinations.
 ################################################################################
 
+# Load HF_TOKEN from repo .env if present so gated models can be accessed
+ENV_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.env"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  . "$ENV_FILE"
+  set +a
+fi
+
 # ============================================================================
 # DATASET PARAMETERS
 # ============================================================================
-declare -a DATASET_NAME=(VNMET)
-declare -a TARGET_COLUMN=("Vavg80 [m/s]")
+declare -a DATASET_NAME=(KZMET)
+declare -a TARGET_COLUMN=("WS50M")
 
 # ============================================================================
 # FEDERATED LEARNING PARAMETERS
 # ============================================================================
-declare -a NUM_ROUNDS=(15)
+declare -a NUM_ROUNDS=(1)
 declare -a FRACTION_TRAIN=(1.0)
 declare -a LOCAL_EPOCHS=(1)
 declare -a LEARNING_RATE=(0.0001)
@@ -27,10 +35,8 @@ declare -a NUM_CLIENTS=(5)
 # ============================================================================
 # STRATEGY & OPTIMIZATION PARAMETERS
 # ============================================================================
-# HP SENSITIVITY: FedProx proximal_mu sweep
-# Baseline (mu=0.01) already done: mse=0.5179 at pred=72
-# Sweeping mu={0.001, 0.01, 0.1} to find optimal regularization strength
-declare -a STRATEGY=(fedprox)
+# QUICK VERIFICATION: smoke-test new models (opt, gemma, qwen)
+declare -a STRATEGY=(fedavg)
 declare -a PROXIMAL_MU=(0.01)
 declare -a WARMUP_ROUNDS=(1)
 declare -a WEIGHT_DECAY=(0.01)
@@ -40,9 +46,9 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 # MODEL ARCHITECTURE PARAMETERS
 # ============================================================================
-declare -a MODEL=(gpt4ts_nonlinear_attnres)
+declare -a MODEL=(gemma_nonlinear)
 declare -a SEQ_LEN=(336)
-declare -a PRED_LEN=(1 72 432)
+declare -a PRED_LEN=(1)
 declare -a LABEL_LEN=(24)
 declare -a PATCH_SIZE=(16)
 declare -a STRIDE=(16)
