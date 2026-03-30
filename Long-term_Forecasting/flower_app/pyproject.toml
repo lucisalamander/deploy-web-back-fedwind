@@ -93,6 +93,8 @@ individual = 0
 lora-r = 8
 lora-alpha = 16
 lora-dropout = 0.0
+peft-method = "lora"
+is-pretrained = false
 
 # Regularization Parameters
 dropout = 0.15

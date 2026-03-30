@@ -8,29 +8,35 @@
 # automatically generate all combinations.
 ################################################################################
 
+# Load HF_TOKEN from repo .env if present so gated models can be accessed
+ENV_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.env"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  . "$ENV_FILE"
+  set +a
+fi
+
 # ============================================================================
 # DATASET PARAMETERS
 # ============================================================================
-declare -a DATASET_NAME=(KZMET)
-declare -a TARGET_COLUMN=(WS50M)
+declare -a DATASET_NAME=(VNMET)
+declare -a TARGET_COLUMN=("Vavg80 [m/s]")
 
 # ============================================================================
 # FEDERATED LEARNING PARAMETERS
 # ============================================================================
 declare -a NUM_ROUNDS=(15)
 declare -a FRACTION_TRAIN=(1.0)
-# HP SENSITIVITY: FedLN local_epochs sweep
-# Baseline (local_epochs=1) already done: mse=0.5115 at pred=72
-# Sweeping local_epochs={1,2,3} — more local adaptation of personalized LayerNorms
-declare -a LOCAL_EPOCHS=(1 2 3)
-declare -a LEARNING_RATE=(0.0001)
+declare -a LOCAL_EPOCHS=(1)
+declare -a LEARNING_RATE=(0.001)
 declare -a BATCH_SIZE=(32)
 declare -a NUM_CLIENTS=(5)
 
 # ============================================================================
 # STRATEGY & OPTIMIZATION PARAMETERS
 # ============================================================================
-declare -a STRATEGY=(fedprox)
+# QUICK VERIFICATION: smoke-test new models (opt, gemma, qwen)
+declare -a STRATEGY=(fedavg)
 declare -a PROXIMAL_MU=(0.01)
 declare -a WARMUP_ROUNDS=(1)
 declare -a WEIGHT_DECAY=(0.01)
@@ -42,8 +48,8 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 declare -a MODEL=(gpt4ts_nonlinear)
 declare -a SEQ_LEN=(336)
-declare -a PRED_LEN=(12 24 48 60)
-declare -a LABEL_LEN=(48)
+declare -a PRED_LEN=(1 72 432)
+declare -a LABEL_LEN=(24)
 declare -a PATCH_SIZE=(16)
 declare -a STRIDE=(16)
 declare -a D_MODEL=(768)
@@ -58,9 +64,9 @@ declare -a EMBED=(timeF)
 declare -a FREQ=(h)
 declare -a FACTOR=(1)
 declare -a N_HEADS=(4)
-declare -a E_LAYERS=(2)
+declare -a E_LAYERS=(3)
 declare -a D_LAYERS=(1)
-declare -a D_FF=(512)
+declare -a D_FF=(768)
 declare -a DISTIL=(true)
 declare -a ACTIVATION=(gelu)
 declare -a OUTPUT_ATTENTION=(false)
@@ -76,6 +82,8 @@ declare -a INDIVIDUAL=(0)
 declare -a LORA_R=(8)
 declare -a LORA_ALPHA=(16)
 declare -a LORA_DROPOUT=(0.0)
+declare -a PEFT_METHODS=(pft adalora lora fft)
+declare -a IS_PRETRAINED=(true)
 declare -a DROPOUT=(0.15)
 
 # Total experiments counter
@@ -110,8 +118,12 @@ for dataset_name in "${DATASET_NAME[@]}"; do
                                                 for lora_r in "${LORA_R[@]}"; do
                                                   for lora_alpha in "${LORA_ALPHA[@]}"; do
                                                     for lora_dropout in "${LORA_DROPOUT[@]}"; do
-                                                      for dropout in "${DROPOUT[@]}"; do
+                                                      for peft_method in "${PEFT_METHODS[@]}"; do
+                                                        for is_pretrained in "${IS_PRETRAINED[@]}"; do
+                                                          for dropout in "${DROPOUT[@]}"; do
                                                         ((total++))
+                                                          done
+                                                        done
                                                       done
                                                     done
                                                   done
@@ -172,7 +184,9 @@ for dataset_name in "${DATASET_NAME[@]}"; do
                                                 for lora_r in "${LORA_R[@]}"; do
                                                   for lora_alpha in "${LORA_ALPHA[@]}"; do
                                                     for lora_dropout in "${LORA_DROPOUT[@]}"; do
-                                                      for dropout in "${DROPOUT[@]}"; do
+                                                      for peft_method in "${PEFT_METHODS[@]}"; do
+                                                        for is_pretrained in "${IS_PRETRAINED[@]}"; do
+                                                          for dropout in "${DROPOUT[@]}"; do
                                                         ((current++))
 
                                                         # Print summary of key params
@@ -181,7 +195,8 @@ for dataset_name in "${DATASET_NAME[@]}"; do
                                                         echo "  Dataset: $dataset_name, Target: $target_column"
                                                         echo "  FL: rounds=$num_rounds, lr=$lr, epochs=$local_epochs, strategy=$strategy"
                                                         echo "  Model: $model, pred_len=$pred_len, llm_layers=$llm_layers"
-                                                        echo "  LoRA: r=$lora_r, alpha=$lora_alpha"
+                                                        echo "  PEFT: $peft_method (r=$lora_r, alpha=$lora_alpha)"
+                                                        echo "  is_pretrained: $is_pretrained"
                                                         echo "=================================="
 
                                                         ./run_flower_experiment.sh \
@@ -212,6 +227,8 @@ for dataset_name in "${DATASET_NAME[@]}"; do
                                                           --lora-r "$lora_r" \
                                                           --lora-alpha "$lora_alpha" \
                                                           --lora-dropout "$lora_dropout" \
+                                                          --peft-method "$peft_method" \
+                                                          --is-pretrained "$is_pretrained" \
                                                           --dropout "$dropout"
 
                                                         if [ $? -eq 0 ]; then
@@ -219,6 +236,8 @@ for dataset_name in "${DATASET_NAME[@]}"; do
                                                         else
                                                           echo "✗ Experiment $current failed with exit code $?"
                                                         fi
+                                                          done
+                                                        done
                                                       done
                                                     done
                                                   done

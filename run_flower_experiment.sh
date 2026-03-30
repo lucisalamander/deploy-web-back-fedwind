@@ -103,6 +103,8 @@ INDIVIDUAL=0
 LORA_R=8
 LORA_ALPHA=16
 LORA_DROPOUT=0.0  # No dropout for LoRA
+PEFT_METHOD="lora"  # lora, loha, adalora, pft, fft
+IS_PRETRAINED=false
 DROPOUT=0.15  # Model dropout for regularization (default: 0.15)
 
 # Model selection (passed through to pyproject.toml via --run-config)
@@ -241,6 +243,8 @@ Model Architecture Parameters:
     --lora-r NUM              LoRA rank (default: 8)
     --lora-alpha NUM          LoRA alpha (default: 16)
     --lora-dropout FLOAT      LoRA dropout (default: 0.1)
+    --peft-method STR         PEFT method (lora, loha, adalora, pft, fft)
+    --is-pretrained BOOL      Whether to treat run as pretrained-only (default: false)
     --dropout FLOAT           Model dropout for regularization (default: 0.15)
 
 Other Options:
@@ -538,6 +542,14 @@ parse_args() {
                 ;;
             --lora-dropout)
                 LORA_DROPOUT="$2"
+                shift 2
+                ;;
+            --peft-method)
+                PEFT_METHOD="$2"
+                shift 2
+                ;;
+            --is-pretrained)
+                IS_PRETRAINED="$2"
                 shift 2
                 ;;
             --dropout)
@@ -1034,7 +1046,7 @@ run_flower() {
     print_info "Changed to directory: $FLOWER_APP_DIR"
 
     # Build Flower command (string values must be quoted for TOML format)
-    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE pred-len=$PRED_LEN label-len=$LABEL_LEN strategy=\"$STRATEGY\" proximal-mu=$PROXIMAL_MU warmup-rounds=$WARMUP_ROUNDS weight-decay=$WEIGHT_DECAY early-stopping=$EARLY_STOPPING early-stop-patience=$EARLY_STOP_PATIENCE seq-len=$SEQ_LEN patch-size=$PATCH_SIZE stride=$STRIDE d-model=$D_MODEL hidden-size=$HIDDEN_SIZE kernel-size=$KERNEL_SIZE llm-layers=$LLM_LAYERS enc-in=$ENC_IN dec-in=$DEC_IN c-out=$C_OUT embed-type=$EMBED_TYPE embed=\"$EMBED\" freq=\"$FREQ\" factor=$FACTOR n-heads=$N_HEADS e-layers=$E_LAYERS d-layers=$D_LAYERS d-ff=$D_FF distil=$DISTIL activation=\"$ACTIVATION\" output-attention=$OUTPUT_ATTENTION fc-dropout=$FC_DROPOUT head-dropout=$HEAD_DROPOUT patch-len=$PATCH_LEN padding-patch=\"$PADDING_PATCH\" revin=$REVIN affine=$AFFINE subtract-last=$SUBTRACT_LAST decomposition=$DECOMPOSITION individual=$INDIVIDUAL lora-r=$LORA_R lora-alpha=$LORA_ALPHA lora-dropout=$LORA_DROPOUT dropout=$DROPOUT model=\"$MODEL\" num-clients=$NUM_CLIENTS random-seed=2021"
+    RUN_CONFIG="num-server-rounds=$NUM_ROUNDS fraction-train=$FRACTION_TRAIN local-epochs=$LOCAL_EPOCHS lr=$LEARNING_RATE batch-size=$BATCH_SIZE pred-len=$PRED_LEN label-len=$LABEL_LEN strategy=\"$STRATEGY\" proximal-mu=$PROXIMAL_MU warmup-rounds=$WARMUP_ROUNDS weight-decay=$WEIGHT_DECAY early-stopping=$EARLY_STOPPING early-stop-patience=$EARLY_STOP_PATIENCE seq-len=$SEQ_LEN patch-size=$PATCH_SIZE stride=$STRIDE d-model=$D_MODEL hidden-size=$HIDDEN_SIZE kernel-size=$KERNEL_SIZE llm-layers=$LLM_LAYERS enc-in=$ENC_IN dec-in=$DEC_IN c-out=$C_OUT embed-type=$EMBED_TYPE embed=\"$EMBED\" freq=\"$FREQ\" factor=$FACTOR n-heads=$N_HEADS e-layers=$E_LAYERS d-layers=$D_LAYERS d-ff=$D_FF distil=$DISTIL activation=\"$ACTIVATION\" output-attention=$OUTPUT_ATTENTION fc-dropout=$FC_DROPOUT head-dropout=$HEAD_DROPOUT patch-len=$PATCH_LEN padding-patch=\"$PADDING_PATCH\" revin=$REVIN affine=$AFFINE subtract-last=$SUBTRACT_LAST decomposition=$DECOMPOSITION individual=$INDIVIDUAL lora-r=$LORA_R lora-alpha=$LORA_ALPHA lora-dropout=$LORA_DROPOUT peft-method=\"$PEFT_METHOD\" dropout=$DROPOUT model=\"$MODEL\" num-clients=$NUM_CLIENTS random-seed=2021"
 
     # Add dataset parameters if provided
     if [ -n "$DATASET_NAME" ]; then
@@ -1106,6 +1118,8 @@ run_flower() {
         echo "  hidden_size: $HIDDEN_SIZE"
         echo "  kernel_size: $KERNEL_SIZE"
         echo "  llm_layers: $LLM_LAYERS"
+        echo "  peft_method: $PEFT_METHOD"
+        echo "  is_pretrained: $IS_PRETRAINED"
         echo "  lora_r: $LORA_R"
         echo "  lora_alpha: $LORA_ALPHA"
         echo "  lora_dropout: $LORA_DROPOUT"

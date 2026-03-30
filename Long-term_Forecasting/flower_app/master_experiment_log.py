@@ -67,6 +67,8 @@ SCHEMA = OrderedDict([
 
     # ── B. PRIMARY AXES (main comparison dimensions in the paper) ────────────
     ("model",                    ("str",   None,  "Model name: gpt4ts_nonlinear, bert_nonlinear, llama_nonlinear, bart_nonlinear, patchtst, dlinear, informer")),
+    ("peft_method",              ("str",   None,  "Fine-tuning strategy: lora, loha, adalora, pft, fft")),
+    ("is_pretrained",            ("bool",  None,  "Whether the backbone was kept pretrained (no fine-tuning)")),
     ("fl_algorithm",             ("str",   None,  "FL strategy: fedavg, fedprox, scaffold, fedln, fedper, centralized, local_only")),
     ("pred_len",                 ("int",   None,  "Forecast horizon: 1, 72, 432")),
 
@@ -340,6 +342,8 @@ def build_experiment_row(exp_dir: str) -> Dict[str, Any]:
 
     # B. PRIMARY AXES
     row["model"] = config.get("model", None)
+    row["peft_method"] = config.get("peft_method", config.get("peft-method", None))
+    row["is_pretrained"] = config.get("is_pretrained", config.get("is-pretrained", None))
     row["fl_algorithm"] = config.get("strategy", None)
     row["pred_len"] = config.get("pred-len", config.get("pred_len", None))
 
