@@ -44,6 +44,38 @@ DATASET_REGISTRY = {
             4: "Aktobe",
         },
     },
+    "GREECE": {
+        "folder": "datasets/greece",
+        "files": ["WT01.csv", "WT02.csv", "WT03.csv", "WT04.csv", "WT05.csv",
+                  "WT06.csv", "WT07.csv", "WT08.csv", "WT09.csv", "WT10.csv"],
+        "target": "Ambient WindSpeed Avg. [m/s]",
+        "num_clients": 10,
+        "client_names": {
+            0: "WT01", 1: "WT02", 2: "WT03", 3: "WT04", 4: "WT05",
+            5: "WT06", 6: "WT07", 7: "WT08", 8: "WT09", 9: "WT10",
+        },
+    },
+    "CAPITALS": {
+        "folder": "datasets/capitals-nasa",
+        "files": ["astana-nasa.csv", "canberra-nasa.csv", "london-nasa.csv",
+                  "paris-nasa.csv", "washington-nasa.csv"],
+        "target": "WS50M",
+        "num_clients": 5,
+        "client_names": {
+            0: "Astana", 1: "Canberra", 2: "London", 3: "Paris", 4: "Washington",
+        },
+    },
+    "MIXED5": {
+        "folder": "datasets/mixed5",
+        "files": ["kz_astana.csv", "kz_almaty.csv", "kz_aktau.csv",
+                  "vn_station001.csv", "gr_wt01.csv"],
+        "target": "wind_speed",
+        "num_clients": 5,
+        "client_names": {
+            0: "KZ_Astana", 1: "KZ_Almaty", 2: "KZ_Aktau",
+            3: "VN_Station001", 4: "GR_WT01",
+        },
+    },
 }
 
 
