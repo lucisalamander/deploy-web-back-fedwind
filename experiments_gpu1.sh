@@ -25,10 +25,10 @@ declare -a TARGET_COLUMN=("WS50M")
 # ============================================================================
 # FEDERATED LEARNING PARAMETERS
 # ============================================================================
-declare -a NUM_ROUNDS=(1)
+declare -a NUM_ROUNDS=(15)
 declare -a FRACTION_TRAIN=(1.0)
 declare -a LOCAL_EPOCHS=(1)
-declare -a LEARNING_RATE=(0.0001)
+declare -a LEARNING_RATE=(0.001)
 declare -a BATCH_SIZE=(32)
 declare -a NUM_CLIENTS=(5)
 
@@ -38,7 +38,7 @@ declare -a NUM_CLIENTS=(5)
 # QUICK VERIFICATION: smoke-test new models (opt, gemma, qwen)
 declare -a STRATEGY=(fedavg)
 declare -a PROXIMAL_MU=(0.01)
-declare -a WARMUP_ROUNDS=(1)
+declare -a WARMUP_ROUNDS=(1 72 432)
 declare -a WEIGHT_DECAY=(0.01)
 declare -a EARLY_STOPPING=(true)
 declare -a EARLY_STOP_PATIENCE=(5)
