@@ -57,8 +57,8 @@ DATASET_REGISTRY = {
     },
     "CAPITALS": {
         "folder": "datasets/capitals-nasa",
-        "files": ["astana-nasa.csv", "canberra-nasa.csv", "london-nasa.csv",
-                  "paris-nasa.csv", "washington-nasa.csv"],
+        "files": ["astana_nasa.csv", "canberra_nasa.csv", "london_nasa.csv",
+                  "paris_nasa.csv", "washington_nasa.csv"],
         "target": "WS50M",
         "num_clients": 5,
         "client_names": {

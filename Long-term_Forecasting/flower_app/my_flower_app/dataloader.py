@@ -217,6 +217,13 @@ class Dataset_Custom(Dataset):
             if not df_raw['date'].is_monotonic_increasing:
                 df_raw = df_raw.sort_values('date').reset_index(drop=True)
 
+            # Drop rows where target is NaN to prevent StandardScaler from producing NaN mean/std.
+            n_before = len(df_raw)
+            df_raw = df_raw.dropna(subset=[self.target]).reset_index(drop=True)
+            n_dropped = n_before - len(df_raw)
+            if n_dropped > 0:
+                logging.warning(f"Dropped {n_dropped} rows with NaN target '{self.target}' from {self.data_path}")
+
         '''
         df_raw.columns: ['date', ...(other features), target feature]
         '''
