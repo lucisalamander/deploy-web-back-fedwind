@@ -157,7 +157,7 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     cmd = [
         "bash", "-c",
         "source /home/tin_trungchau/miniconda3/etc/profile.d/conda.sh && "
-        "conda activate /raid/tin_trungchau/conda_envs/flwr39 && "
+        "conda activate /home/tin_trungchau/miniconda3/envs/flwr39 && "
         "export CUDA_VISIBLE_DEVICES=$(nvidia-smi --query-gpu=index,memory.used "
         "--format=csv,noheader,nounits | sort -t',' -k2 -n | head -1 | cut -d',' -f1 | tr -d ' ') && "
         "echo \"Selected GPU: $CUDA_VISIBLE_DEVICES\" && "

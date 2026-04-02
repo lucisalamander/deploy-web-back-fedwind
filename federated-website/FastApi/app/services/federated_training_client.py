@@ -168,11 +168,11 @@ def run_federated_training(inp: FederatedTrainingInput) -> FederatedTrainingOutp
     cmd = [
         "bash", "-c",
         f"source /home/tin_trungchau/miniconda3/etc/profile.d/conda.sh && "
-        f"conda activate /raid/tin_trungchau/conda_envs/flwr39 && "
+        f"conda activate /home/tin_trungchau/miniconda3/envs/flwr39 && "
         f"export CUDA_VISIBLE_DEVICES=$(nvidia-smi --query-gpu=index,memory.used "
         f"--format=csv,noheader,nounits | sort -t',' -k2 -n | head -1 | cut -d',' -f1 | tr -d ' ') && "
         f"echo \"Selected GPU: $CUDA_VISIBLE_DEVICES\" && "
-        f"flwr run . {federation} --run-config '{run_config}'"
+        f"/home/tin_trungchau/miniconda3/envs/flwr39/bin/flwr run . {federation} --run-config '{run_config}'"
     ]
 
     env = os.environ.copy()

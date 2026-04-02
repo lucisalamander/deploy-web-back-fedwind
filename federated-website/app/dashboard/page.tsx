@@ -1320,9 +1320,9 @@ const renderConversationNode = (
                           MAE
                         </div>
                         <div className="mt-1 text-2xl font-bold text-foreground">
-                          {trainingResult ? `${trainingResult.metrics.mae} m/s` : "-- m/s"}
+                          {trainingResult ? trainingResult.metrics.mae : "--"}
                         </div>
-                        <div className="text-xs text-muted-foreground">Mean Absolute Error</div>
+                        <div className="text-xs text-muted-foreground">Mean Absolute Error (normalized)</div>
                       </div>
                       <div className="rounded-lg border border-border bg-muted/30 p-4">
                         <div className="flex items-center gap-2 text-muted-foreground text-sm">
@@ -1330,9 +1330,9 @@ const renderConversationNode = (
                           RMSE
                         </div>
                         <div className="mt-1 text-2xl font-bold text-foreground">
-                          {trainingResult ? `${trainingResult.metrics.rmse} m/s` : "-- m/s"}
+                          {trainingResult ? trainingResult.metrics.rmse : "--"}
                         </div>
-                        <div className="text-xs text-muted-foreground">Root Mean Square Error</div>
+                        <div className="text-xs text-muted-foreground">Root Mean Square Error (normalized)</div>
                       </div>
                       <div className="rounded-lg border border-border bg-muted/30 p-4">
                         <div className="flex items-center gap-2 text-muted-foreground text-sm">
@@ -1386,7 +1386,7 @@ const renderConversationNode = (
                         Wind Speed Forecast
                         {trainingResult && trainingResult.forecast.length > 0 && (
                           <span className="text-xs font-normal text-muted-foreground ml-1">
-                            — {trainingResult.forecast.length} steps (real data)
+                            — {trainingResult.forecast.length} steps (normalized scale)
                           </span>
                         )}
                       </h4>
@@ -1420,7 +1420,7 @@ const renderConversationNode = (
                             <YAxis
                               tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                               label={{
-                                value: "m/s",
+                                value: trainingResult && trainingResult.forecast.length > 0 ? "normalized" : "m/s",
                                 angle: -90,
                                 position: "insideLeft",
                                 fontSize: 12,
@@ -1437,7 +1437,9 @@ const renderConversationNode = (
                                 color: "hsl(var(--foreground))",
                               }}
                               formatter={(value: number, name: string) => [
-                                `${Number(value).toFixed(4)} m/s`,
+                                trainingResult && trainingResult.forecast.length > 0
+                                  ? Number(value).toFixed(4)
+                                  : `${Number(value).toFixed(2)} m/s`,
                                 name === "predicted" ? "Predicted" : "Actual",
                               ]}
                               labelFormatter={(label) => `${label}`}
