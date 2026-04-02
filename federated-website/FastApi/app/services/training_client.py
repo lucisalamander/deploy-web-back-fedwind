@@ -31,20 +31,24 @@ TRAINING_REPO_ROOT = os.path.abspath(
 RUN_SCRIPT = os.path.join(TRAINING_REPO_ROOT, "run_centralized.py")
 TRAINING_PYTHON = os.environ.get(
     "TRAINING_PYTHON",
-    "/home/tin_trungchau/miniconda3/envs/flwr39/bin/python"
+    "/raid/tin_trungchau/conda_envs/flwr39/bin/python"
 )
 
 MODEL_NAME_MAP = {
-    "GPT4TS": "gpt4ts_nonlinear",
-    "GPT4TS_LINEAR": "gpt4ts_linear",
-    "LLAMA": "llama_nonlinear",      
+    "GPT4TS":       "gpt4ts_nonlinear",
+    "GPT4TS_LINEAR":"gpt4ts_linear",
+    "LLAMA":        "llama_nonlinear",
     "LLAMA_LINEAR": "llama_linear",
-    "BERT": "bert_nonlinear",       
-    "BERT_LINEAR": "bert_linear",
-    "BART": "bart_nonlinear",        
-    "BART_LINEAR": "bart_linear",
-    "INFORMER": "informer",
-    "PATCHTST": "patchtst",
+    "BERT":         "bert_nonlinear",
+    "BERT_LINEAR":  "bert_linear",
+    "BART":         "bart_nonlinear",
+    "BART_LINEAR":  "bart_linear",
+    "OPT":          "opt_nonlinear",
+    "OPT_LINEAR":   "opt_linear",
+    "GEMMA":        "gemma_nonlinear",
+    "GEMMA_LINEAR": "gemma_linear",
+    "QWEN":         "qwen_nonlinear",
+    "QWEN_LINEAR":  "qwen_linear",
 }
 
 
@@ -153,7 +157,7 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     cmd = [
         "bash", "-c",
         "source /home/tin_trungchau/miniconda3/etc/profile.d/conda.sh && "
-        "conda activate flwr39 && "
+        "conda activate /raid/tin_trungchau/conda_envs/flwr39 && "
         "export CUDA_VISIBLE_DEVICES=$(nvidia-smi --query-gpu=index,memory.used "
         "--format=csv,noheader,nounits | sort -t',' -k2 -n | head -1 | cut -d',' -f1 | tr -d ' ') && "
         "echo \"Selected GPU: $CUDA_VISIBLE_DEVICES\" && "

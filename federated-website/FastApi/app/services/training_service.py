@@ -119,6 +119,9 @@ def start_training(filename: str, config: TrainingConfig) -> TrainingResult:
                 dropout_rate=config.dropout_rate,
                 federated_algorithm=config.federated_algorithm.value,
                 num_clients=config.num_clients,
+                rounds=config.num_rounds,
+                local_epochs=config.local_epochs,
+                llm_layers=config.llm_layers,
             )
             output = run_federated_training(fed_input)
         else:

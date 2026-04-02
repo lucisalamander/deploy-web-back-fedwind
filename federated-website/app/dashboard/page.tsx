@@ -15,8 +15,6 @@ import {
   getPublicAnswers,
   getFeedbackMessages,
   createFeedbackFollowUp,
-  submitModelUpdate,
-  aggregateFederatedRound,
   type HealthResponse,
   type TrainingResult,
   type PublicAnswerItem,
@@ -85,6 +83,9 @@ export default function DashboardPage() {
   const [trainingModel, setTrainingModel] = useState("GPT4TS")
   const [federalAlgorithm, setFederalAlgorithm] = useState("FedAvg")
   const [numClients, setNumClients] = useState("5")
+  const [numRounds, setNumRounds] = useState("5")
+  const [localEpochs, setLocalEpochs] = useState("1")
+  const [llmLayers, setLlmLayers] = useState("4")
   const [dropoutRate, setDropoutRate] = useState("0.2")
   const [mode, setMode] = useState("federated")
   const [horizon, setHorizon] = useState("6") // Declared horizon state
@@ -705,6 +706,9 @@ const renderConversationNode = (
           mode: "centralized" as const,
           federated_algorithm: federalAlgorithm,
           num_clients: parseInt(numClients),
+          num_rounds: parseInt(numRounds),
+          local_epochs: parseInt(localEpochs),
+          llm_layers: parseInt(llmLayers),
         }
 
         const result = await startTraining(trainFilename, config)
@@ -716,94 +720,45 @@ const renderConversationNode = (
         const fileInput = document.getElementById("file-upload") as HTMLInputElement
         if (fileInput) fileInput.value = ""
       } else {
-        // Federated mode: data stays in the browser — only model weights go to server
+        // Federated mode: upload CSV → server runs real flwr simulation → results returned
         if (files.length === 0) {
-          setError("Please select at least one CSV file")
+          setError("Please select at least one CSV file to upload")
           return
         }
 
-        const predLen = parseInt(predictionLength)
-        const roundNumber = 1
-        const clientId = `browser-client-${Date.now()}`
-
-        // Step 1: Read CSV locally — data never leaves the browser
-        setProcessingStep("Reading your data locally (data stays on your device)...")
-        const file = files[0]
-        const text = await file.text()
-        const lines = text.split("\n").filter((l) => l.trim() && !l.startsWith("-"))
-        const header = lines[0].split(",").map((h) => h.trim())
-        const wsIdx = header.findIndex((h) => h === "WS10M")
-        const wsValues: number[] = []
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(",")
-          const val = parseFloat(cols[wsIdx])
-          if (!isNaN(val)) wsValues.push(val)
-        }
-        if (wsValues.length < 10) {
-          setError("Could not read WS10M column from CSV. Ensure it has a WS10M column.")
-          return
+        // Step 1: Upload file
+        const savedFilenames: string[] = []
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i]
+          setProcessingStep(`Uploading file ${i + 1} of ${files.length}: ${file.name}...`)
+          const uploadResult = await uploadFile(file)
+          savedFilenames.push(uploadResult.file.filename)
         }
 
-        // Step 2: Local training simulation — compute statistics as proxy weights
-        setProcessingStep(`Training locally on ${wsValues.length} samples (your data stays here)...`)
-        const mean = wsValues.reduce((a, b) => a + b, 0) / wsValues.length
-        const variance = wsValues.reduce((a, b) => a + (b - mean) ** 2, 0) / wsValues.length
-        const std = Math.sqrt(variance)
-        // Compute simple autocorrelation lags as "learned weights"
-        const maxLag = Math.min(predLen, 24)
-        const weights: number[] = []
-        for (let lag = 1; lag <= maxLag; lag++) {
-          let cov = 0
-          for (let i = lag; i < wsValues.length; i++) {
-            cov += (wsValues[i] - mean) * (wsValues[i - lag] - mean)
-          }
-          weights.push(cov / ((wsValues.length - lag) * variance + 1e-8))
-        }
-        // Estimate local training loss (MSE of lag-1 prediction)
-        let localLoss = 0
-        for (let i = 1; i < wsValues.length; i++) {
-          localLoss += (wsValues[i] - wsValues[i - 1]) ** 2
-        }
-        localLoss /= wsValues.length - 1
+        await loadUploadedFiles()
 
-        // Step 3: Send only weights to server — not the raw data
-        setProcessingStep("Sending model weights to server for aggregation...")
-        await submitModelUpdate(
-          clientId,
-          "1.0.0",
-          { mean, std, autocorr_weights: weights },
-          roundNumber,
-          {
-            trainingModel: trainingModel,
-            federatedAlgorithm: federalAlgorithm,
-            predictionLength: predLen,
-            dropoutRate: parseFloat(dropoutRate),
-            numClients: parseInt(numClients),
-            numSamples: wsValues.length,
-            trainingLoss: localLoss,
-          },
+        // Step 2: Run real federated simulation via flwr on the server
+        const trainFilename = savedFilenames[savedFilenames.length - 1]
+        setProcessingStep(
+          `Running federated simulation: ${trainingModel} / ${federalAlgorithm} / ${numClients} clients...`
         )
 
-        // Step 4: Trigger server-side aggregation
-        setProcessingStep(`Aggregating with ${federalAlgorithm}...`)
-        const aggResult = await aggregateFederatedRound(roundNumber, predLen)
-
-        // Convert to TrainingResult shape for the existing results panel
-        setTrainingResult({
-          success: true,
-          message: `Federated training complete — ${trainingModel} / ${federalAlgorithm} / ${aggResult.num_clients_aggregated} client(s)`,
-          model_name: trainingModel,
-          prediction_length: predLen,
+        const config = {
+          training_model: trainingModel,
+          prediction_length: parseInt(predictionLength),
           dropout_rate: parseFloat(dropoutRate),
-          training_time_seconds: 0,
-          metrics: { mae: aggResult.mae, rmse: aggResult.rmse },
-          forecast: aggResult.forecast,
-          download_training_summary: null,
-          download_timing_summary: null,
-        })
+          mode: "federated" as const,
+          federated_algorithm: federalAlgorithm,
+          num_clients: parseInt(numClients),
+          num_rounds: parseInt(numRounds),
+          local_epochs: parseInt(localEpochs),
+          llm_layers: parseInt(llmLayers),
+        }
+
+        const result = await startTraining(trainFilename, config)
+        setTrainingResult(result)
         setShowResults(true)
 
-        // Reset file selection (file was never uploaded — nothing to clean up on server)
         setFiles([])
         const fileInput = document.getElementById("file-upload") as HTMLInputElement
         if (fileInput) fileInput.value = ""
@@ -1108,11 +1063,19 @@ const renderConversationNode = (
                     </SelectTrigger>
                     <SelectContent>
                     <SelectItem value="GPT4TS">GPT4TS (Nonlinear)</SelectItem>
+                    <SelectItem value="GPT4TS_LINEAR">GPT4TS (Linear)</SelectItem>
                     <SelectItem value="LLAMA">LLaMA (Nonlinear)</SelectItem>
+                    <SelectItem value="LLAMA_LINEAR">LLaMA (Linear)</SelectItem>
                     <SelectItem value="BERT">BERT (Nonlinear)</SelectItem>
+                    <SelectItem value="BERT_LINEAR">BERT (Linear)</SelectItem>
                     <SelectItem value="BART">BART (Nonlinear)</SelectItem>
-                    <SelectItem value="INFORMER">Informer</SelectItem>
-                    <SelectItem value="PATCHTST">PatchTST</SelectItem>
+                    <SelectItem value="BART_LINEAR">BART (Linear)</SelectItem>
+                    <SelectItem value="OPT">OPT (Nonlinear)</SelectItem>
+                    <SelectItem value="OPT_LINEAR">OPT (Linear)</SelectItem>
+                    <SelectItem value="GEMMA">Gemma (Nonlinear)</SelectItem>
+                    <SelectItem value="GEMMA_LINEAR">Gemma (Linear)</SelectItem>
+                    <SelectItem value="QWEN">Qwen (Nonlinear)</SelectItem>
+                    <SelectItem value="QWEN_LINEAR">Qwen (Linear)</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">Selected: {trainingModel}</p>
@@ -1205,39 +1168,107 @@ const renderConversationNode = (
                       <SelectContent>
                         <SelectItem value="FedAvg">FedAvg - Federated Averaging</SelectItem>
                         <SelectItem value="FedProx">FedProx - Proximal Term</SelectItem>
-                        <SelectItem value="FedBN">FedBN - Batch Normalization</SelectItem>
-                        <SelectItem value="FedPer">FedPer - Personalization</SelectItem>
                         <SelectItem value="SCAFFOLD">SCAFFOLD - Control Variates</SelectItem>
+                        <SelectItem value="StatAvg">StatAvg - Statistics Averaging</SelectItem>
+                        <SelectItem value="FedPer">FedPer - Personalized Head</SelectItem>
+                        <SelectItem value="FedLN">FedLN - Local Layer Norms</SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">Selected: {federalAlgorithm}</p>
                   </div>
                 )}
 
-                {/* Number of Clients - Only for Federated Mode */}
+                {/* Federated-only parameters */}
                 {mode === "federated" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="clients">Number of Clients</Label>
-                    <div className="flex gap-2 items-center">
-                      <input
-                        id="clients"
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={numClients}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value)
-                          if (val >= 1 && val <= 10) {
-                            setNumClients(e.target.value)
-                          }
-                        }}
-                        className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        placeholder="5"
-                      />
-                      <span className="text-sm text-muted-foreground font-mono">/ 10</span>
+                  <>
+                    {/* Number of Clients */}
+                    <div className="space-y-2">
+                      <Label htmlFor="clients">Number of Clients</Label>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          id="clients"
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={numClients}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value)
+                            if (val >= 1 && val <= 10) setNumClients(e.target.value)
+                          }}
+                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          placeholder="5"
+                        />
+                        <span className="text-sm text-muted-foreground font-mono">/ 10</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Participating clients: 1 - 10</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Participating clients: 1 - 10</p>
-                  </div>
+
+                    {/* Number of Rounds */}
+                    <div className="space-y-2">
+                      <Label htmlFor="rounds">Communication Rounds</Label>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          id="rounds"
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={numRounds}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value)
+                            if (val >= 1 && val <= 50) setNumRounds(e.target.value)
+                          }}
+                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          placeholder="5"
+                        />
+                        <span className="text-sm text-muted-foreground font-mono">/ 50</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">FL aggregation rounds</p>
+                    </div>
+
+                    {/* Local Epochs */}
+                    <div className="space-y-2">
+                      <Label htmlFor="localEpochs">Local Epochs per Round</Label>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          id="localEpochs"
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={localEpochs}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value)
+                            if (val >= 1 && val <= 10) setLocalEpochs(e.target.value)
+                          }}
+                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          placeholder="1"
+                        />
+                        <span className="text-sm text-muted-foreground font-mono">/ 10</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Training epochs per client per round</p>
+                    </div>
+
+                    {/* LLM Layers */}
+                    <div className="space-y-2">
+                      <Label htmlFor="llmLayers">LLM Layers</Label>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          id="llmLayers"
+                          type="number"
+                          min="1"
+                          max="12"
+                          value={llmLayers}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value)
+                            if (val >= 1 && val <= 12) setLlmLayers(e.target.value)
+                          }}
+                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          placeholder="4"
+                        />
+                        <span className="text-sm text-muted-foreground font-mono">/ 12</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Transformer layers used from the LLM backbone</p>
+                    </div>
+                  </>
                 )}
 
                 {/* Start Button */}

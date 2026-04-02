@@ -25,8 +25,12 @@ class TrainingModelName(str, Enum):
     BERT_LINEAR = "BERT_LINEAR"
     BART = "BART"
     BART_LINEAR = "BART_LINEAR"
-    INFORMER = "INFORMER"
-    PATCHTST = "PATCHTST"
+    OPT = "OPT"
+    OPT_LINEAR = "OPT_LINEAR"
+    GEMMA = "GEMMA"
+    GEMMA_LINEAR = "GEMMA_LINEAR"
+    QWEN = "QWEN"
+    QWEN_LINEAR = "QWEN_LINEAR"
 
 
 class TrainingMode(str, Enum):
@@ -44,9 +48,10 @@ VALID_PREDICTION_LENGTHS = [1, 3, 6, 36, 72, 144, 432]
 class FederatedAlgorithm(str, Enum):
     FEDAVG = "FedAvg"
     FEDPROX = "FedProx"
-    FEDBN = "FedBN"
-    FEDPER = "FedPer"
     SCAFFOLD = "SCAFFOLD"
+    STATAVG = "StatAvg"
+    FEDPER = "FedPer"
+    FEDLN = "FedLN"
 
 
 class TrainingConfig(BaseModel):
@@ -82,6 +87,24 @@ class TrainingConfig(BaseModel):
         ge=1,
         le=10,
         description="Number of participating federated clients",
+    )
+    num_rounds: int = Field(
+        default=5,
+        ge=1,
+        le=50,
+        description="Number of federated communication rounds",
+    )
+    local_epochs: int = Field(
+        default=1,
+        ge=1,
+        le=10,
+        description="Local training epochs per round",
+    )
+    llm_layers: int = Field(
+        default=4,
+        ge=1,
+        le=12,
+        description="Number of LLM transformer layers",
     )
 
 
@@ -223,6 +246,8 @@ class FederatedTrainingInput(BaseModel):
     batch_size: int = Field(default=32, description="Training batch size")
     learning_rate: float = Field(default=0.0001, description="Learning rate")
     rounds: int = Field(default=5, description="Federated communication rounds")
+    local_epochs: int = Field(default=1, description="Local training epochs per round")
+    llm_layers: int = Field(default=4, description="Number of LLM layers to use")
 
 
 class FederatedTrainingOutput(BaseModel):

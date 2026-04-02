@@ -50,13 +50,16 @@ export interface UploadResponse {
 }
 
 export interface TrainingConfig {
-  training_model: string   // GPT4TS | LLAMA | BERT | BART
+  training_model: string    // GPT4TS | LLAMA | BERT | BART
   prediction_length: number // 1, 3, 6, 36, 72, 144, 432
   dropout_rate: number      // 0.0 - 0.5
   mode: string              // centralized | federated
-  // Federated-only fields (sent with every request, backend ignores in centralized mode)
+  // Federated-only fields (ignored in centralized mode)
   federated_algorithm: string  // FedAvg | FedProx | FedBN | FedPer | SCAFFOLD
   num_clients: number          // 1 - 10
+  num_rounds: number           // 1 - 50
+  local_epochs: number         // 1 - 10
+  llm_layers: number           // 1 - 12
 }
 
 export interface TrainingMetrics {
@@ -237,7 +240,7 @@ export async function getModelSkeleton(): Promise<ModelSkeletonResponse> {
 /** POST /model-update */
 export async function submitModelUpdate(
   clientId: string,
-  modelVersion: string,
+  _modelVersion: string,
   weights: Record<string, unknown>,
   roundNumber: number,
   options?: {
