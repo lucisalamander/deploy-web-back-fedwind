@@ -551,6 +551,7 @@ def main(grid: Grid, context: Context) -> None:
     kernel_size: int = context.run_config.get("kernel-size", 3)
     llm_layers: int = context.run_config.get("llm-layers", 4)
     peft_method: str = context.run_config.get("peft-method", "lora")
+    is_pretrained: bool = context.run_config.get("is-pretrained", True)
     lora_r: int = context.run_config.get("lora-r", 8)
     lora_alpha: int = context.run_config.get("lora-alpha", 16)
     lora_dropout: float = context.run_config.get("lora-dropout", 0.15)
@@ -635,6 +636,7 @@ def main(grid: Grid, context: Context) -> None:
         lora_dropout=lora_dropout,
         dropout=dropout,
         peft_method=peft_method,
+        is_pretrained=is_pretrained,
     )
     global_model = Net(configs=configs)
     arrays = ArrayRecord(global_model.state_dict())

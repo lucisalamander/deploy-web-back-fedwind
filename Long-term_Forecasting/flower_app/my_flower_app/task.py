@@ -165,6 +165,7 @@ def get_default_configs(
     lora_alpha=16,
     lora_dropout=0.15,
     dropout=0.15,
+    is_pretrained=True,
     # baseline params
     label_len=48,
     enc_in=1,
@@ -234,7 +235,7 @@ def get_default_configs(
         is_opt=(backbone_flag == "is_opt"),
         is_gemma=(backbone_flag == "is_gemma"),
         is_qwen=(backbone_flag == "is_qwen"),
-        pretrain=True,
+        pretrain=is_pretrained,
         freeze=(peft_method != "fft"),  # FFT unfreezes all; others freeze backbone
         peft_method=(peft_method if is_llm else "pft"),
         use_lora=(peft_method in ("lora", "loha", "adalora") if is_llm else False),

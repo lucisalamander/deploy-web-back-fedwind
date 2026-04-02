@@ -58,7 +58,8 @@ def train(msg: Message, context: Context):
         affine=conf.get("affine", 0),
         subtract_last=conf.get("subtract_last", 0),
         decomposition=conf.get("decomposition", 0),
-        individual=conf.get("individual", 0)
+        individual=conf.get("individual", 0),
+        is_pretrained=conf.get("is_pretrained", True),
     )
 
     model = Net(configs=configs)
@@ -207,7 +208,8 @@ def evaluate(msg: Message, context: Context):
         affine=conf.get("affine", 0),
         subtract_last=conf.get("subtract-last", 0),
         decomposition=conf.get("decomposition", 0),
-        individual=conf.get("individual", 0)
+        individual=conf.get("individual", 0),
+        is_pretrained=conf.get("is-pretrained", True),
     )
 
     model = Net(configs=configs)

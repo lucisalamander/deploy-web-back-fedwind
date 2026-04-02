@@ -19,8 +19,8 @@ fi
 # ============================================================================
 # DATASET PARAMETERS
 # ============================================================================
-declare -a DATASET_NAME=(KZMET)
-declare -a TARGET_COLUMN=("WS50M")
+declare -a DATASET_NAME=(GREECE)
+declare -a TARGET_COLUMN=("Ambient WindSpeed Avg. [m/s]")
 
 # ============================================================================
 # FEDERATED LEARNING PARAMETERS

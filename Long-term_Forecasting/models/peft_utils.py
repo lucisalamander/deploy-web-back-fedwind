@@ -39,7 +39,7 @@ def apply_peft(model, configs, target_modules):
         peft_cfg = LoHaConfig(
             r=r,
             alpha=alpha,
-            target_modules=target_modules,
+            target_modules="all-linear",  # GPT-2 uses Conv1D; "all-linear" handles it transparently
             module_dropout=dropout,
         )
     elif method == "adalora":

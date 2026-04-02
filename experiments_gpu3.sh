@@ -82,8 +82,8 @@ declare -a INDIVIDUAL=(0)
 declare -a LORA_R=(8)
 declare -a LORA_ALPHA=(16)
 declare -a LORA_DROPOUT=(0.0)
-declare -a PEFT_METHODS=(pft adalora lora fft)
-declare -a IS_PRETRAINED=(true)
+declare -a PEFT_METHODS=(pft fft)
+declare -a IS_PRETRAINED=(false)
 declare -a DROPOUT=(0.15)
 
 # Total experiments counter
