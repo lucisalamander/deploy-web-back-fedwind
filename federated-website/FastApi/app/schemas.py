@@ -233,6 +233,7 @@ class FederatedTrainingOutput(BaseModel):
     """
     mae: float
     rmse: float
+    mape: Optional[float] = None
     training_time_seconds: float
     predictions: List[float]
     actuals: Optional[List[float]] = None

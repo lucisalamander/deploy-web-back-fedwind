@@ -16,6 +16,9 @@ Start:  uvicorn main:app --reload
 Docs:   http://localhost:8001/docs
 """
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

@@ -240,6 +240,15 @@ export async function submitModelUpdate(
   modelVersion: string,
   weights: Record<string, unknown>,
   roundNumber: number,
+  options?: {
+    trainingModel?: string
+    federatedAlgorithm?: string
+    predictionLength?: number
+    dropoutRate?: number
+    numClients?: number
+    numSamples?: number
+    trainingLoss?: number
+  },
 ): Promise<ModelUpdateResponse> {
   return apiFetch<ModelUpdateResponse>("/model-update", {
     method: "POST",
@@ -248,7 +257,13 @@ export async function submitModelUpdate(
       client_id: clientId,
       round_number: roundNumber,
       model_weights: weights,
-      num_samples: 1000,
+      training_model: options?.trainingModel ?? "GPT4TS",
+      federated_algorithm: options?.federatedAlgorithm ?? "FedAvg",
+      prediction_length: options?.predictionLength ?? 6,
+      dropout_rate: options?.dropoutRate ?? 0.2,
+      num_clients: options?.numClients ?? 1,
+      num_samples: options?.numSamples ?? 1000,
+      training_loss: options?.trainingLoss ?? null,
     }),
   })
 }
@@ -294,6 +309,31 @@ export async function createFeedbackFollowUp(
       context,
       reply_to_message_id: replyToMessageId,
     }),
+  })
+}
+
+export interface AggregateResponse {
+  success: boolean
+  message: string
+  round_number: number
+  num_clients_aggregated: number
+  federated_algorithm: string
+  training_model: string
+  prediction_length: number
+  mae: number
+  rmse: number
+  forecast: ForecastPoint[]
+}
+
+/** POST /model-update/aggregate — trigger server-side FedAvg aggregation for a round */
+export async function aggregateFederatedRound(
+  roundNumber: number,
+  predictionLength: number,
+): Promise<AggregateResponse> {
+  return apiFetch<AggregateResponse>("/model-update/aggregate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ round_number: roundNumber, prediction_length: predictionLength }),
   })
 }
 

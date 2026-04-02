@@ -66,13 +66,13 @@ logger = logging.getLogger(__name__)
 
 # The Flower app is located in: federated-cme/Long-term_Forecasting/flower_app/my_flower_app
 TRAINING_REPO_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "Long-term_Forecasting", "flower_app", "my_flower_app")
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "Long-term_Forecasting", "flower_app")
 )
 FLOWER_APP_DIR = os.path.join(TRAINING_REPO_ROOT, "my_flower_app")
 RUN_SCRIPT = os.path.join(TRAINING_REPO_ROOT, "run_federated.py")
 TRAINING_PYTHON = os.environ.get(
     "TRAINING_PYTHON",
-    "/raid/tin_trungchau/conda_env/envs/flwr39/bin/python"
+    "/home/tin_trungchau/miniconda3/envs/flwr39/bin/python"
 )
 
 # Model name mapping (same as centralized)
