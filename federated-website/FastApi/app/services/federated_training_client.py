@@ -185,18 +185,49 @@ def run_federated_training(inp: FederatedTrainingInput) -> FederatedTrainingOutp
     logger.info(f"[STEP 7] LAUNCHING flwr run in {TRAINING_REPO_ROOT} ...")
     logger.info("=" * 70)
 
+    stdout_lines = []
+    stderr_lines = []
+
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=TRAINING_REPO_ROOT,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=3600 * 6,
             stdin=subprocess.DEVNULL,
             env=env,
         )
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("Federated training timed out after 6 hours")
+
+        import threading
+
+        def stream_pipe(pipe, log_fn, buf):
+            for line in pipe:
+                line = line.rstrip()
+                log_fn(line)
+                buf.append(line)
+
+        t_out = threading.Thread(target=stream_pipe, args=(proc.stdout, logger.info,  stdout_lines), daemon=True)
+        t_err = threading.Thread(target=stream_pipe, args=(proc.stderr, logger.warning, stderr_lines), daemon=True)
+        t_out.start()
+        t_err.start()
+
+        try:
+            proc.wait(timeout=3600 * 6)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            raise RuntimeError("Federated training timed out after 6 hours")
+
+        t_out.join()
+        t_err.join()
+
+        class _Result:
+            returncode = proc.returncode
+            stdout = "\n".join(stdout_lines)
+            stderr = "\n".join(stderr_lines)
+
+        result = _Result()
+
     except FileNotFoundError as e:
         raise RuntimeError(f"Could not launch flwr: {e}")
     finally:
@@ -209,10 +240,6 @@ def run_federated_training(inp: FederatedTrainingInput) -> FederatedTrainingOutp
             logger.info(f"[STEP 7] Restored {len(backups)} original dataset files")
 
     logger.info(f"[STEP 8] Return code: {result.returncode}")
-    if result.stdout:
-        logger.info(f"  STDOUT (last 2000 chars):\n{result.stdout[-2000:]}")
-    if result.stderr:
-        logger.warning(f"  STDERR (last 2000 chars):\n{result.stderr[-2000:]}")
 
     if result.returncode != 0:
         raise RuntimeError(
