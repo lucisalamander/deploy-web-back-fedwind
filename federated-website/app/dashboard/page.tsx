@@ -177,6 +177,22 @@ export default function DashboardPage() {
       const result = await getPublicAnswers()
       setPublicAnswers(result.entries)
       setCurrentAnswersPage(1)
+
+      const loadedConversations = await Promise.all(
+        result.entries.map(async (entry) => {
+          try {
+            const conversation = await getFeedbackMessages(entry.id)
+            return [entry.id, conversation.entries] as const
+          } catch {
+            return [entry.id, []] as const
+          }
+        }),
+      )
+
+      setConversationMessages((prev) => ({
+        ...prev,
+        ...Object.fromEntries(loadedConversations),
+      }))
     } catch (err) {
       console.error("[v0] Failed to load public answers:", err)
     } finally {
@@ -251,6 +267,25 @@ export default function DashboardPage() {
       )
 
     return matches.length > 0 ? matches[matches.length - 1] : null
+  }
+
+  const getMainUserAnswerMessage = (conversationId: string) => {
+    const rootQuestion = getThreadRootQuestionMessage(conversationId)
+    if (!rootQuestion) return null
+
+    const messages = getVisibleMessages(conversationId)
+      .filter(
+        (message) =>
+          message.sender_type === "user" &&
+          message.id !== rootQuestion.id &&
+          message.reply_to_message_id === rootQuestion.id,
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      )
+
+    return messages.length > 0 ? messages[0] : null
   }
 
   const findMessageById = (conversationId: string, messageId: string | null) => {
@@ -1586,14 +1621,14 @@ const renderConversationNode = (
           <div className="rounded-lg border border-border bg-card p-6">
             <div className="flex items-center gap-2 mb-6">
               <MessageSquare className="h-5 w-5 text-primary" />
-              <h3 className="text-lg font-semibold text-foreground">Ask Questions or Send Us Feedback</h3>
+              <h3 className="text-lg font-semibold text-foreground">Ask Questions!</h3>
               <span className="text-xs text-muted-foreground ml-auto">
                 
               </span>
             </div>
 
             <p className="text-sm text-muted-foreground mb-4">
-              Answered questions may appear anonymously in the Recent Answers section below.
+              Questions will appear anonymously in the Discussion Board section below.
             </p>
 
             {feedbackSent ? (
@@ -1664,7 +1699,7 @@ const renderConversationNode = (
                     ) : (
                       <>
                         <Send className="h-4 w-4" />
-                        Send Feedback
+                        Send 
                       </>
                     )}
                   </Button>
@@ -1676,7 +1711,7 @@ const renderConversationNode = (
           <div className="rounded-lg border border-border bg-card p-6">
             <div className="flex items-center gap-2 mb-6">
               <CheckCircle2 className="h-5 w-5 text-primary" />
-              <h3 className="text-lg font-semibold text-foreground">Recent Answers</h3>
+              <h3 className="text-lg font-semibold text-foreground">Discussion Board</h3>
 
               <Button
                 variant="outline"
@@ -1700,7 +1735,7 @@ const renderConversationNode = (
                 <MessageSquare className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
                 <h4 className="font-semibold text-foreground">No public answers yet</h4>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Answered questions will appear here so everyone can see them.
+                  Questions and other posts will appear here so everyone can see them.
                 </p>
               </div>
             ) : (
@@ -1720,28 +1755,64 @@ const renderConversationNode = (
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
                         Question
                       </p>
+
+                      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>{item.asked_by?.trim() ? item.asked_by : "Anonymous"}</span>
+                        <span>•</span>
+                        <span>
+                          Asked on{" "}
+                          {new Date(item.created_at).toLocaleDateString(undefined, {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </span>
+                      </div>
+
                       <p className="text-foreground font-medium">{item.question}</p>
                     </div>
 
-                    <div
-                      id={
-                        getMainOfficialAnswerMessage(item.id)
-                          ? getMessageElementId(getMainOfficialAnswerMessage(item.id)!.id)
-                          : undefined
-                      }
-                      className="mt-4 rounded-md border border-primary/10 bg-primary/5 p-4"
-                    >
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                        Official Answer
-                      </p>
-                      <p className="text-sm text-foreground whitespace-pre-wrap">
-                        {item.answer_text}
-                      </p>
-                    </div>
+                    {item.answer_text ? (
+                      <>
+                        <div
+                          id={
+                            getMainOfficialAnswerMessage(item.id)
+                              ? getMessageElementId(getMainOfficialAnswerMessage(item.id)!.id)
+                              : undefined
+                          }
+                          className="mt-4 rounded-md border border-primary/10 bg-primary/5 p-4"
+                        >
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
+                            Official Answer
+                          </p>
+                          <p className="text-sm text-foreground whitespace-pre-wrap">
+                            {item.answer_text}
+                          </p>
+                        </div>
 
-                    <div className="mt-3 text-xs text-muted-foreground">
-                      Answered on {new Date(item.answered_at).toLocaleString()}
-                    </div>
+                        <div className="mt-3 text-xs text-muted-foreground">
+                          Answered on {item.answered_at ? new Date(item.answered_at).toLocaleString() : "—"}
+                        </div>
+                      </>
+                    ) : getMainUserAnswerMessage(item.id) ? (
+                      <>
+                        <div
+                          id={getMessageElementId(getMainUserAnswerMessage(item.id)!.id)}
+                          className="mt-4 rounded-md border border-border bg-muted/30 p-4"
+                        >
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
+                            User Answer
+                          </p>
+                          <p className="text-sm text-foreground whitespace-pre-wrap">
+                            {getMainUserAnswerMessage(item.id)!.message_text}
+                          </p>
+                        </div>
+
+                        <div className="mt-3 text-xs text-muted-foreground">
+                          Replied on {new Date(getMainUserAnswerMessage(item.id)!.created_at).toLocaleString()}
+                        </div>
+                      </>
+                    ) : null}
 
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Button

@@ -475,19 +475,21 @@ def get_public_answers() -> list[dict]:
             )
             main_public_answer = cursor.fetchone()
 
-        if main_public_answer:
-            results.append(
-                {
-                    "id": conversation_id,
-                    "question": first_user_message["message_text"],
-                    "answer_text": main_public_answer["message_text"],
-                    "created_at": first_user_message["created_at"],
-                    "answered_at": main_public_answer["created_at"],
-                    "asked_by": "Anonymous",
-                }
-            )
+        results.append(
+            {
+                "id": conversation_id,
+                "question": first_user_message["message_text"],
+                "answer_text": main_public_answer["message_text"] if main_public_answer else None,
+                "created_at": first_user_message["created_at"],
+                "answered_at": main_public_answer["created_at"] if main_public_answer else None,
+                "asked_by": first_user_message["sender_name"] or "Anonymous",
+            }
+        )
 
-    results.sort(key=lambda x: x["answered_at"], reverse=True)
+    results.sort(
+        key=lambda x: x["answered_at"] or x["created_at"],
+        reverse=True,
+    )
     return results
 
 

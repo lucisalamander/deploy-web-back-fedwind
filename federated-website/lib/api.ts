@@ -116,9 +116,9 @@ export interface FeedbackResponse {
 export interface PublicAnswerItem {
   id: string
   question: string
-  answer_text: string
+  answer_text: string | null
   created_at: string
-  answered_at: string
+  answered_at: string | null
   asked_by: string
 }
 

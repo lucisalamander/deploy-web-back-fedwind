@@ -102,9 +102,9 @@ class ConversationMessagesResponse(BaseModel):
 class PublicAnswerItem(BaseModel):
     id: str
     question: str
-    answer_text: str
+    answer_text: Optional[str] = None
     created_at: str
-    answered_at: str
+    answered_at: Optional[str] = None
     asked_by: str
 
 
