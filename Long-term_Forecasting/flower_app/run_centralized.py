@@ -69,6 +69,7 @@ DEFAULTS = {
     "d_layers": 1,
     "d_ff": 768,
     "peft_method": "lora",
+    "is_pretrained": False,
     "lora_r": 8,
     "lora_alpha": 16,
     "lora_dropout": 0.15,
@@ -99,6 +100,7 @@ CONF_KEY_MAP = {
     "D_LAYERS": ("d_layers", int),
     "D_FF": ("d_ff", int),
     "PEFT_METHOD": ("peft_method", str),
+    "IS_PRETRAINED": ("is_pretrained", lambda v: v.lower() == "true"),
     "LORA_R": ("lora_r", int),
     "LORA_ALPHA": ("lora_alpha", int),
     "LORA_DROPOUT": ("lora_dropout", float),
@@ -149,6 +151,8 @@ def build_parser():
     p.add_argument("--lora-alpha", type=int, default=None)
     p.add_argument("--lora-dropout", type=float, default=None)
     p.add_argument("--dropout", type=float, default=None)
+    p.add_argument("--peft-method", type=str, default=None)
+    p.add_argument("--is-pretrained", type=lambda v: v.lower() == "true", default=None)
     p.add_argument("--model", type=str, default=None)
     p.add_argument("--dataset-name", type=str, default=None)
     p.add_argument("--exp-dir", type=str, default=None)
@@ -330,6 +334,7 @@ def main():
         d_layers=cfg["d_layers"],
         d_ff=cfg["d_ff"],
         peft_method=cfg["peft_method"],
+        is_pretrained=cfg["is_pretrained"],
         lora_r=cfg["lora_r"],
         lora_alpha=cfg["lora_alpha"],
         lora_dropout=cfg["lora_dropout"],
