@@ -65,7 +65,7 @@ def apply_peft(model, configs, target_modules):
 
 def is_adapter_param(name):
     """Check if a parameter name belongs to a PEFT adapter (LoRA/LoHA/AdaLoRA)."""
-    return "lora_" in name or "hada_" in name
+    return "lora_" in name or "hada_" in name or "ranknum" in name
 
 
 def freeze_backbone(model, configs, norm_keywords):

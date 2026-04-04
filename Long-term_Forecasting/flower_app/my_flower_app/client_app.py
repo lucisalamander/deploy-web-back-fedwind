@@ -60,7 +60,10 @@ def train(msg: Message, context: Context):
         subtract_last=conf.get("subtract_last", 0),
         decomposition=conf.get("decomposition", 0),
         individual=conf.get("individual", 0),
-        is_pretrained=conf.get("is_pretrained", True),
+        # Clients always init with random weights — the server's state dict
+        # (received via msg) overwrites them immediately.  Skipping the
+        # from_pretrained download avoids a transient 2x VRAM spike every round.
+        is_pretrained=False,
     )
 
     model = Net(configs=configs)
@@ -210,7 +213,7 @@ def evaluate(msg: Message, context: Context):
         subtract_last=conf.get("subtract-last", 0),
         decomposition=conf.get("decomposition", 0),
         individual=conf.get("individual", 0),
-        is_pretrained=conf.get("is-pretrained", True),
+        is_pretrained=False,  # weights come from server; skip pretrained download
     )
 
     model = Net(configs=configs)
