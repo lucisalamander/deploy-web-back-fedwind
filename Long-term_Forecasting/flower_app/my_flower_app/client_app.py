@@ -35,6 +35,7 @@ def train(msg: Message, context: Context):
         lora_alpha=conf.get("lora_alpha", 16),
         lora_dropout=conf.get("lora_dropout", 0.15),
         dropout=conf.get("dropout", 0.15),
+        adalora_total_step=conf.get("adalora_total_step", None),
         label_len=conf.get("label_len", 48),
         enc_in=conf.get("enc_in", 1),
         dec_in=conf.get("dec_in", 1),

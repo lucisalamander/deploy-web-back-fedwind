@@ -43,13 +43,14 @@ def apply_peft(model, configs, target_modules):
             module_dropout=dropout,
         )
     elif method == "adalora":
+        total_step = getattr(configs, "adalora_total_step", None)
         peft_cfg = AdaLoraConfig(
             r=r,
             lora_alpha=alpha,
             lora_dropout=dropout,
             target_modules=target_modules,
             bias="none",
-            total_step=1000,
+            **({"total_step": total_step} if total_step is not None else {}),
         )
     else:
         raise ValueError(f"Unknown peft_method '{method}'. Use: lora, loha, adalora, pft, fft")

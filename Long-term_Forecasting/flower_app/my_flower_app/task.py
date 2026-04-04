@@ -192,6 +192,7 @@ def get_default_configs(
     decomposition=0,
     individual=0,
     peft_method="lora",  # Fine-tuning strategy: "lora", "loha", "adalora", "pft", "fft"
+    adalora_total_step=None,  # Total steps for AdaLoRA rank pruning schedule (None = PEFT default)
 ):
     """
     Get model configurations.
@@ -277,6 +278,7 @@ def get_default_configs(
         lora_dropout=lora_dropout,
         lora_target_modules=["c_attn", "c_fc", "c_proj"],
         dropout=dropout,
+        adalora_total_step=adalora_total_step,
     )
 
 

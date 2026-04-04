@@ -556,6 +556,7 @@ def main(grid: Grid, context: Context) -> None:
     lora_alpha: int = context.run_config.get("lora-alpha", 16)
     lora_dropout: float = context.run_config.get("lora-dropout", 0.15)
     dropout: float = context.run_config.get("dropout", 0.15)
+    adalora_total_step = context.run_config.get("adalora-total-step", None)
     label_len: int = context.run_config.get("label-len", 48)
     enc_in: int = context.run_config.get("enc-in", 1)
     dec_in: int = context.run_config.get("dec-in", 1)
@@ -637,6 +638,7 @@ def main(grid: Grid, context: Context) -> None:
         dropout=dropout,
         peft_method=peft_method,
         is_pretrained=is_pretrained,
+        adalora_total_step=adalora_total_step,
     )
     global_model = Net(configs=configs)
     arrays = ArrayRecord(trainable_state_dict(global_model))
@@ -706,6 +708,7 @@ def main(grid: Grid, context: Context) -> None:
             "lora_alpha": lora_alpha,
             "lora_dropout": lora_dropout,
             "dropout": dropout,
+            "adalora_total_step": adalora_total_step,
             "label_len": label_len,
             "enc_in": enc_in,
             "dec_in": dec_in,
