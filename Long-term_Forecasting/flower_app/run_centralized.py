@@ -69,7 +69,7 @@ DEFAULTS = {
     "d_layers": 1,
     "d_ff": 768,
     "peft_method": "lora",
-    "is_pretrained": False,
+    "is_pretrained": True,
     "lora_r": 8,
     "lora_alpha": 16,
     "lora_dropout": 0.15,

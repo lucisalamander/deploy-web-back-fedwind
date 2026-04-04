@@ -73,6 +73,7 @@ class BART_Linear(nn.Module):
                     AutoConfig.from_pretrained("facebook/bart-base")
                 )
             self.bart.encoder.layers = self.bart.encoder.layers[:configs.llm_layers]
+            self.bart = apply_peft(self.bart, configs, ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"])
 
         self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
         self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)

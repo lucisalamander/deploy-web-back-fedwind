@@ -71,6 +71,7 @@ class BERT_Linear(nn.Module):
                     AutoConfig.from_pretrained("bert-base-multilingual-cased")
                 )
             self.bert.encoder.layer = self.bert.encoder.layer[:configs.llm_layers]
+            self.bert = apply_peft(self.bert, configs, ["query", "key", "value", "dense"])
 
         self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
         self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)
