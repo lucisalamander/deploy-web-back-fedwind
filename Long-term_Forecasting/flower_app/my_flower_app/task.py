@@ -338,6 +338,23 @@ class Net(nn.Module):
         return self.model(x)
 
 
+def trainable_state_dict(model):
+    """Return state dict containing only parameters with requires_grad=True.
+
+    When PEFT adapters are active, this returns only adapter weights (+
+    in_layer/out_layer), reducing the payload transmitted in federated rounds
+    from the full backbone size to just the trainable parameters.
+    When no parameters are frozen (e.g. FFT), this returns the full state dict.
+    """
+    full = model.state_dict()
+    trainable_keys = {n for n, p in model.named_parameters() if p.requires_grad}
+    filtered = {k: v for k, v in full.items() if k in trainable_keys}
+    # Fallback: if nothing is trainable (shouldn't happen), return full state
+    if not filtered:
+        return full
+    return filtered
+
+
 def train(net, trainloader, epochs, lr, device, valloader=None, weight_decay=0.01, global_weights=None, proximal_mu=None, c_local=None, c_global=None):
     """
     Train loop expects `net` to be an instance of Net (wrapper above).

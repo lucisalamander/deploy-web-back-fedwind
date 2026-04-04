@@ -9,7 +9,7 @@ import numpy as np
 from flwr.app import ArrayRecord, Context, Message, MetricRecord, RecordDict
 from flwr.clientapp import ClientApp
 
-from my_flower_app.task import get_default_configs, Net, load_client_train, load_client_val, load_client_test, train as train_fn, test as test_fn
+from my_flower_app.task import get_default_configs, Net, load_client_train, load_client_val, load_client_test, train as train_fn, test as test_fn, trainable_state_dict
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -145,7 +145,7 @@ def train(msg: Message, context: Context):
     # Save training history
     _save_metrics_history(history, exp_dir, pid, current_round)
 
-    arrays = ArrayRecord(model.state_dict())
+    arrays = ArrayRecord(trainable_state_dict(model))
     metrics = MetricRecord({
         "train_loss": float(train_loss),
         "train_duration_sec": float(train_duration),

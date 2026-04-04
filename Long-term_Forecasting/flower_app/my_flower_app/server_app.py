@@ -18,7 +18,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format= '%(asctime)s - %(levelname)s - %(message)s')
 
-from my_flower_app.task import get_default_configs, Net
+from my_flower_app.task import get_default_configs, Net, trainable_state_dict
 
 app = ServerApp()
 
@@ -639,7 +639,7 @@ def main(grid: Grid, context: Context) -> None:
         is_pretrained=is_pretrained,
     )
     global_model = Net(configs=configs)
-    arrays = ArrayRecord(global_model.state_dict())
+    arrays = ArrayRecord(trainable_state_dict(global_model))
 
     # Calculate model payload size
     model_size_mb = get_model_size_mb(arrays)
@@ -938,7 +938,9 @@ def main(grid: Grid, context: Context) -> None:
 
     logging.info("Saving best model to disk...")
     final_model_path = os.path.join(exp_dir, "final_model.pt")
-    torch.save(arrays.to_torch_state_dict(), final_model_path)
+    # Merge best trainable weights back into full model for a self-contained checkpoint
+    global_model.load_state_dict(arrays.to_torch_state_dict(), strict=False)
+    torch.save(global_model.state_dict(), final_model_path)
     logging.info(f"Saved best model (from round {best['round']}) to: {final_model_path}")
 
     df = pd.DataFrame(results)
