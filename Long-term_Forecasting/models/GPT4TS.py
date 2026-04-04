@@ -101,7 +101,7 @@ class GPT4TS_Linear(nn.Module):
                 print("------------------no pretrain------------------")
                 self.gpt2 = GPT2Model(GPT2Config())
             self.gpt2.h = self.gpt2.h[:configs.llm_layers]
-            # print("gpt2 = {}".format(self.gpt2))
+            self.gpt2 = apply_peft(self.gpt2, configs, ["c_attn", "c_fc", "c_proj"])
 
         self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
         self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)
