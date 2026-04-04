@@ -69,26 +69,38 @@ def is_adapter_param(name):
 
 def freeze_backbone(model, configs, norm_keywords):
     """
-    Freeze backbone parameters, keeping norm layers, embeddings, and adapter params trainable.
+    Freeze backbone parameters, keeping selected params trainable.
+
+    When a PEFT adapter is active (lora/loha/adalora), get_peft_model() has
+    already frozen base-model weights and enabled adapter weights.  In that
+    case we respect PEFT's decisions and do NOT additionally unfreeze norm
+    layers — only adapter parameters remain trainable.
+
+    For non-adapter methods (pft), this function is the sole freeze mechanism:
+    freeze everything except norm/embed layers identified by *norm_keywords*.
 
     Args:
         model: The model (possibly PEFT-wrapped).
         configs: SimpleNamespace with freeze, pretrain, peft_method.
-        norm_keywords: List of substrings that identify norm/embed params to keep trainable.
-            E.g. ['ln', 'wpe'] for GPT-2, ['norm', 'embed'] for LLaMA.
+        norm_keywords: List of substrings that identify norm/embed params to keep trainable
+            (only used for pft method). E.g. ['ln', 'wpe'] for GPT-2, ['norm', 'embed'] for LLaMA.
     """
     if not (configs.freeze and configs.pretrain):
         return
 
     peft_method = getattr(configs, "peft_method", "lora")
+
+    if peft_method in ("lora", "loha", "adalora"):
+        # PEFT's get_peft_model() already set requires_grad correctly:
+        #   base params → False, adapter params → True.
+        # Nothing to do — avoid unfreezing norm layers that PEFT froze.
+        return
+
+    # pft: freeze everything except norm/embed layers
     for name, param in model.named_parameters():
         keep = False
-        # Always keep norm/embed layers trainable
         for kw in norm_keywords:
             if kw in name.lower():
                 keep = True
                 break
-        # Keep adapter params trainable
-        if peft_method in ("lora", "loha", "adalora") and is_adapter_param(name):
-            keep = True
         param.requires_grad = keep
