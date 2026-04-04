@@ -6,7 +6,7 @@ import torch.nn as nn
 
 from einops import rearrange
 
-from transformers import AutoModel
+from transformers import AutoModel, AutoConfig
 
 _models_dir = os.path.dirname(os.path.abspath(__file__))
 if _models_dir not in sys.path:
@@ -57,14 +57,19 @@ class BERT_Linear(nn.Module):
         self.patch_num += 1
 
         if configs.is_bert:
-            self.bert = AutoModel.from_pretrained(
-                "bert-base-multilingual-cased",
-                output_hidden_states=True,
-                low_cpu_mem_usage=True,
-                use_safetensors=True,
-            )
+            if configs.pretrain:
+                self.bert = AutoModel.from_pretrained(
+                    "bert-base-multilingual-cased",
+                    output_hidden_states=True,
+                    low_cpu_mem_usage=True,
+                    use_safetensors=True,
+                )
+            else:
+                print("------------------no pretrain------------------")
+                self.bert = AutoModel.from_config(
+                    AutoConfig.from_pretrained("bert-base-multilingual-cased")
+                )
             self.bert.encoder.layer = self.bert.encoder.layer[:configs.llm_layers]
-            # print("bert= {}".format(self.bert))
 
         self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
         self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)
@@ -120,12 +125,18 @@ class BERT_Nonlinear(nn.Module):
 
         # initialize GPT2 backbone if needed
         if configs.is_bert:
-            self.bert = AutoModel.from_pretrained(
-                "bert-base-multilingual-cased",
-                output_hidden_states=True,
-                low_cpu_mem_usage=True,
-                use_safetensors=True,
-            )
+            if configs.pretrain:
+                self.bert = AutoModel.from_pretrained(
+                    "bert-base-multilingual-cased",
+                    output_hidden_states=True,
+                    low_cpu_mem_usage=True,
+                    use_safetensors=True,
+                )
+            else:
+                print("------------------no pretrain------------------")
+                self.bert = AutoModel.from_config(
+                    AutoConfig.from_pretrained("bert-base-multilingual-cased")
+                )
             self.bert.encoder.layer = self.bert.encoder.layer[:configs.llm_layers]
             self.bert = apply_peft(self.bert, configs, ["query", "key", "value", "dense"])
 

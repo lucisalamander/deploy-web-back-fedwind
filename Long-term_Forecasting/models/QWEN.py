@@ -6,7 +6,7 @@ import torch.nn as nn
 
 from einops import rearrange
 
-from transformers import AutoModel
+from transformers import AutoModel, AutoConfig
 
 _models_dir = os.path.dirname(os.path.abspath(__file__))
 if _models_dir not in sys.path:
@@ -58,17 +58,21 @@ class Qwen_Linear(nn.Module):
         self.patch_num += 1
 
         if configs.is_qwen:
-            # Using Qwen/Qwen3-0.6B (0.6B params, hidden_size=1024)
-            self.qwen = AutoModel.from_pretrained(
-                "Qwen/Qwen3-0.6B",
-                output_hidden_states=True,
-                low_cpu_mem_usage=True,
-                use_safetensors=True,
-            )
+            if configs.pretrain:
+                self.qwen = AutoModel.from_pretrained(
+                    "Qwen/Qwen3-0.6B",
+                    output_hidden_states=True,
+                    low_cpu_mem_usage=True,
+                    use_safetensors=True,
+                )
+            else:
+                print("------------------no pretrain------------------")
+                self.qwen = AutoModel.from_config(
+                    AutoConfig.from_pretrained("Qwen/Qwen3-0.6B")
+                )
             self.qwen.layers = self.qwen.layers[:configs.llm_layers]
             target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
             self.qwen = apply_peft(self.qwen, configs, target_modules)
-            # print("qwen= {}".format(self.qwen))
 
         self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
         self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)
@@ -124,17 +128,21 @@ class Qwen_Nonlinear(nn.Module):
         self.patch_num += 1
 
         if configs.is_qwen:
-            # Using Qwen/Qwen3-0.6B
-            self.qwen = AutoModel.from_pretrained(
-                "Qwen/Qwen3-0.6B",  # 0.6B params, lightweight
-                output_hidden_states=True,
-                low_cpu_mem_usage=True,
-                use_safetensors=True,
-            )
+            if configs.pretrain:
+                self.qwen = AutoModel.from_pretrained(
+                    "Qwen/Qwen3-0.6B",
+                    output_hidden_states=True,
+                    low_cpu_mem_usage=True,
+                    use_safetensors=True,
+                )
+            else:
+                print("------------------no pretrain------------------")
+                self.qwen = AutoModel.from_config(
+                    AutoConfig.from_pretrained("Qwen/Qwen3-0.6B")
+                )
             self.qwen.layers = self.qwen.layers[:configs.llm_layers]
             target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
             self.qwen = apply_peft(self.qwen, configs, target_modules)
-            # print("qwen= {}".format(self.qwen))
 
         # Dropout for regularization
         dropout_rate = getattr(configs, "dropout", 0.15)

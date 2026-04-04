@@ -6,7 +6,7 @@ import torch.nn as nn
 
 from einops import rearrange
 
-from transformers import AutoModel
+from transformers import AutoModel, AutoConfig
 
 _models_dir = os.path.dirname(os.path.abspath(__file__))
 if _models_dir not in sys.path:
@@ -54,13 +54,18 @@ class Opt_Linear(nn.Module):
         self.patch_num += 1
 
         if configs.is_opt:
-            # facebook/opt-350m: word_embed_proj_dim=512, hidden_size=1024
-            self.opt = AutoModel.from_pretrained(
-                "facebook/opt-350m",
-                output_hidden_states=True,
-                low_cpu_mem_usage=True,
-                use_safetensors=True,
-            )
+            if configs.pretrain:
+                self.opt = AutoModel.from_pretrained(
+                    "facebook/opt-350m",
+                    output_hidden_states=True,
+                    low_cpu_mem_usage=True,
+                    use_safetensors=True,
+                )
+            else:
+                print("------------------no pretrain------------------")
+                self.opt = AutoModel.from_config(
+                    AutoConfig.from_pretrained("facebook/opt-350m")
+                )
             self.opt.decoder.layers = self.opt.decoder.layers[:configs.llm_layers]
             self.opt = apply_peft(self.opt, configs, ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"])
 
@@ -115,13 +120,18 @@ class Opt_Nonlinear(nn.Module):
         self.patch_num += 1
 
         if configs.is_opt:
-            # facebook/opt-350m: word_embed_proj_dim=512, hidden_size=1024
-            self.opt = AutoModel.from_pretrained(
-                "facebook/opt-350m",
-                output_hidden_states=True,
-                low_cpu_mem_usage=True,
-                use_safetensors=True,
-            )
+            if configs.pretrain:
+                self.opt = AutoModel.from_pretrained(
+                    "facebook/opt-350m",
+                    output_hidden_states=True,
+                    low_cpu_mem_usage=True,
+                    use_safetensors=True,
+                )
+            else:
+                print("------------------no pretrain------------------")
+                self.opt = AutoModel.from_config(
+                    AutoConfig.from_pretrained("facebook/opt-350m")
+                )
             self.opt.decoder.layers = self.opt.decoder.layers[:configs.llm_layers]
             self.opt = apply_peft(self.opt, configs, ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"])
 

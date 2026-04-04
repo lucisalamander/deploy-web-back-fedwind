@@ -6,7 +6,7 @@ import torch.nn as nn
 
 from einops import rearrange
 
-from transformers import AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, AutoConfig
 
 _models_dir = os.path.dirname(os.path.abspath(__file__))
 if _models_dir not in sys.path:
@@ -48,13 +48,17 @@ class ConvMLPPatchEmbedding(nn.Module):
 _GEMMA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 
 def _load_gemma_backbone(configs):
-    # Load the CausalLM and use the base text model to ensure checkpoint matches.
-    base = AutoModelForCausalLM.from_pretrained(
-        "google/gemma-3-270m",
-        output_hidden_states=True,
-        low_cpu_mem_usage=True,
-        use_safetensors=True,
-    )
+    if configs.pretrain:
+        base = AutoModelForCausalLM.from_pretrained(
+            "google/gemma-3-270m",
+            output_hidden_states=True,
+            low_cpu_mem_usage=True,
+            use_safetensors=True,
+        )
+    else:
+        print("------------------no pretrain------------------")
+        cfg = AutoConfig.from_pretrained("google/gemma-3-270m")
+        base = AutoModelForCausalLM.from_config(cfg)
     model = base.model
     model.layers = model.layers[:configs.llm_layers]
     return model

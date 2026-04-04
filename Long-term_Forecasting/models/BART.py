@@ -6,7 +6,7 @@ import torch.nn as nn
 
 from einops import rearrange
 
-from transformers import AutoModel
+from transformers import AutoModel, AutoConfig
 
 _models_dir = os.path.dirname(os.path.abspath(__file__))
 if _models_dir not in sys.path:
@@ -58,16 +58,21 @@ class BART_Linear(nn.Module):
         self.patch_num += 1
 
         if configs.is_bart:
-            self.bart = AutoModel.from_pretrained(
-                "facebook/bart-base",
-                output_hidden_states=True,
-                low_cpu_mem_usage=False,
-                use_safetensors=True,
-                force_download=False,
-                resume_download=False,
-            )
+            if configs.pretrain:
+                self.bart = AutoModel.from_pretrained(
+                    "facebook/bart-base",
+                    output_hidden_states=True,
+                    low_cpu_mem_usage=False,
+                    use_safetensors=True,
+                    force_download=False,
+                    resume_download=False,
+                )
+            else:
+                print("------------------no pretrain------------------")
+                self.bart = AutoModel.from_config(
+                    AutoConfig.from_pretrained("facebook/bart-base")
+                )
             self.bart.encoder.layers = self.bart.encoder.layers[:configs.llm_layers]
-            # print("bart= {}".format(self.bart))
 
         self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
         self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)
@@ -123,13 +128,19 @@ class BART_Nonlinear(nn.Module):
 
         # initialize GPT2 backbone if needed
         if configs.is_bart:
-            self.bart = AutoModel.from_pretrained(
-                "facebook/bart-base",
-                output_hidden_states=True,
-                low_cpu_mem_usage=False,
-                use_safetensors=True,
-                force_download=False,
-            )
+            if configs.pretrain:
+                self.bart = AutoModel.from_pretrained(
+                    "facebook/bart-base",
+                    output_hidden_states=True,
+                    low_cpu_mem_usage=False,
+                    use_safetensors=True,
+                    force_download=False,
+                )
+            else:
+                print("------------------no pretrain------------------")
+                self.bart = AutoModel.from_config(
+                    AutoConfig.from_pretrained("facebook/bart-base")
+                )
             self.bart.encoder.layers = self.bart.encoder.layers[:configs.llm_layers]
             self.bart = apply_peft(self.bart, configs, ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"])
 

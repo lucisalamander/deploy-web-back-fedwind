@@ -167,6 +167,8 @@ def build_row(exp_dir: Path, columns: List[str]) -> Dict[str, Any]:
     row["lora_r"] = config.get("lora_r", config.get("lora-r"))
     row["lora_alpha"] = config.get("lora_alpha", config.get("lora-alpha"))
     row["lora_dropout"] = config.get("lora_dropout", config.get("lora-dropout"))
+    row["peft_method"] = config.get("peft_method", config.get("peft-method"))
+    row["is_pretrained"] = config.get("is_pretrained", config.get("is-pretrained"))
     row["dataset_name"] = config.get("dataset_name", config.get("dataset-name"))
     # target_column comes from DATASET_REGISTRY, not config
     ds_name = row.get("dataset_name")

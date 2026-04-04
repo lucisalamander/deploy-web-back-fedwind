@@ -6,7 +6,7 @@ import torch.nn as nn
 
 from einops import rearrange
 
-from transformers import AutoModel
+from transformers import AutoModel, AutoConfig
 
 _models_dir = os.path.dirname(os.path.abspath(__file__))
 if _models_dir not in sys.path:
@@ -58,16 +58,20 @@ class Llama_Linear(nn.Module):
         self.patch_num += 1
 
         if configs.is_llama:
-            # Using JackFram/llama-160m (160M params, hidden_size=768)
-            self.llama = AutoModel.from_pretrained(
-                "JackFram/llama-160m",  # 160M params, very lightweight
-                output_hidden_states=True,
-                low_cpu_mem_usage=True,
-                use_safetensors=True,
-            )
+            if configs.pretrain:
+                self.llama = AutoModel.from_pretrained(
+                    "JackFram/llama-160m",
+                    output_hidden_states=True,
+                    low_cpu_mem_usage=True,
+                    use_safetensors=True,
+                )
+            else:
+                print("------------------no pretrain------------------")
+                self.llama = AutoModel.from_config(
+                    AutoConfig.from_pretrained("JackFram/llama-160m")
+                )
             self.llama.layers = self.llama.layers[:configs.llm_layers]
             self.llama = apply_peft(self.llama, configs, ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"])
-            # print("llama= {}".format(self.llama))
 
         self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
         self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)
@@ -122,16 +126,20 @@ class Llama_Nonlinear(nn.Module):
         self.patch_num += 1
 
         if configs.is_llama:
-            # Using JackFram/llama-160m (160M params, hidden_size=768)
-            self.llama = AutoModel.from_pretrained(
-                "JackFram/llama-160m",  # 160M params, very lightweight
-                output_hidden_states=True,
-                low_cpu_mem_usage=True,
-                use_safetensors=True,
-            )
+            if configs.pretrain:
+                self.llama = AutoModel.from_pretrained(
+                    "JackFram/llama-160m",
+                    output_hidden_states=True,
+                    low_cpu_mem_usage=True,
+                    use_safetensors=True,
+                )
+            else:
+                print("------------------no pretrain------------------")
+                self.llama = AutoModel.from_config(
+                    AutoConfig.from_pretrained("JackFram/llama-160m")
+                )
             self.llama.layers = self.llama.layers[:configs.llm_layers]
             self.llama = apply_peft(self.llama, configs, ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"])
-            # print("llama= {}".format(self.llama))
 
         # Dropout for regularization
         dropout_rate = getattr(configs, "dropout", 0.15)

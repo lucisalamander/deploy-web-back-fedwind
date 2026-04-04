@@ -74,7 +74,7 @@ declare -a EARLY_STOP_PATIENCE=(5)
 # ============================================================================
 # MODEL ARCHITECTURE PARAMETERS
 # ============================================================================
-declare -a MODEL=(gpt4ts_nonlinear)
+declare -a MODEL=(gpt4ts_linear)
 declare -a SEQ_LEN=(336)
 declare -a PRED_LEN=(1 72 432)
 declare -a PATCH_SIZE=(16)
