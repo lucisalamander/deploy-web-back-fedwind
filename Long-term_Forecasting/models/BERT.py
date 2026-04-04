@@ -16,7 +16,7 @@ from peft_utils import apply_peft, freeze_backbone
 
 # --------- Conv + MLP Patch Embedding ---------
 class ConvMLPPatchEmbedding(nn.Module):
-    def __init__(self, patch_size, d_model, hidden_size=128, kernel_size=3):
+    def __init__(self, patch_size, d_model, hidden_size=128, kernel_size=3, dropout=0.15):
         super().__init__()
         # Conv1d expects input shape [batch, in_channels, sequence_length]
         self.conv1d = nn.Conv1d(
@@ -28,6 +28,7 @@ class ConvMLPPatchEmbedding(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(patch_size, hidden_size),
             nn.ReLU(),
+            nn.Dropout(p=dropout),
             nn.Linear(hidden_size, d_model)
         )
 
@@ -140,16 +141,24 @@ class BERT_Nonlinear(nn.Module):
             self.bert.encoder.layer = self.bert.encoder.layer[:configs.llm_layers]
             self.bert = apply_peft(self.bert, configs, ["query", "key", "value", "dense"])
 
+        # Dropout for regularization
+        dropout_rate = getattr(configs, "dropout", 0.15)
+
         # embedding: conv + mlp patch
         self.in_layer = ConvMLPPatchEmbedding(
             patch_size=configs.patch_size,
             d_model=configs.d_model,
             hidden_size=configs.hidden_size,
-            kernel_size=configs.kernel_size
+            kernel_size=configs.kernel_size,
+            dropout=dropout_rate
         )
         # final linear to map all patches to prediction length
         self.out_layer = nn.Linear(configs.d_model * self.patch_num,
                                    configs.pred_len)
+
+        # Additional dropout layers
+        self.dropout_bert = nn.Dropout(p=dropout_rate)
+        self.dropout_pre_out = nn.Dropout(p=dropout_rate)
 
         if configs.is_bert:
             freeze_backbone(self.bert, configs, ['layernorm', 'layer_norm'])
@@ -181,9 +190,11 @@ class BERT_Nonlinear(nn.Module):
 
         if self.is_bert:
             outputs = self.bert(inputs_embeds=outputs).last_hidden_state
+            outputs = self.dropout_bert(outputs)
 
         # final prediction
         outputs = outputs.reshape(B * M, -1)
+        outputs = self.dropout_pre_out(outputs)
         outputs = self.out_layer(outputs)
         outputs = rearrange(outputs, '(b m) l -> b l m', b=B)
 
