@@ -73,8 +73,8 @@ export default function ArchitecturePage() {
 
       {/* Main Architecture Diagram */}
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        <Card className="overflow-hidden">
-          <CardHeader className="bg-muted/50 border-b">
+        <Card className="overflow-hidden pt-0">
+          <CardHeader className="border-b bg-muted/50 pt-8">
             <CardTitle className="flex items-center gap-2">
               <Globe className="h-5 w-5 text-primary" />
               Federated Learning Architecture
@@ -145,7 +145,7 @@ export default function ArchitecturePage() {
       </section>
 
       {/* FedAvg Detailed Explanation */}
-      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
+      <section className="bg-muted/30 mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
         <div className="grid gap-8 lg:grid-cols-2 items-start">
           <div>
             <SectionHeader
@@ -253,7 +253,7 @@ export default function ArchitecturePage() {
       </section>
 
       {/* FedProx Detailed Explanation */}
-      <section className="bg-muted/30 mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
+      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
         <div className="grid gap-8 lg:grid-cols-2 items-start">
           <div>
             <SectionHeader
@@ -358,63 +358,65 @@ export default function ArchitecturePage() {
         </div>
       </section>
 
-      {/* FedBN Detailed Explanation */}
-      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-        <div className="grid gap-8 lg:grid-cols-2 items-start">
+      {/* FedOPT Detailed Explanation */}
+      <section className="bg-muted/30 mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
+        <div className="grid gap-8 items-start lg:grid-cols-2">
           <div>
             <SectionHeader
               badge="Algorithm"
-              title="FedBN: Federated Batch Normalization"
-              description="Enables personalization by decoupling batch norm from global model aggregation."
+              title="FedOPT: Federated Optimization"
+              description="Improves federated training by applying adaptive server-side optimization instead of plain parameter averaging."
             />
 
             <div className="mt-6 space-y-4">
               <div>
-                <h4 className="font-semibold text-foreground mb-2">Definition</h4>
+                <h4 className="mb-2 font-semibold text-foreground">Definition</h4>
                 <p className="text-sm text-muted-foreground">
-                  FedBN keeps batch normalization parameters (mean, variance) local to each client while aggregating 
-                  all other model weights. This enables personalization without maintaining separate models.
+                  FedOPT is a federated learning approach where clients still train locally, but the server updates the
+                  global model using an optimizer such as Adam, Adagrad, or Yogi. Instead of relying only on standard
+                  weighted averaging, the server performs a more informed optimization step on the aggregated updates.
                 </p>
               </div>
 
               <div>
-                <h4 className="font-semibold text-foreground mb-2">How It Works</h4>
+                <h4 className="mb-2 font-semibold text-foreground">How It Works</h4>
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   <li className="flex gap-2">
-                    <span className="text-accent shrink-0">1.</span> Model split: BN params (local) + other weights (global)
+                    <span className="shrink-0 text-accent">1.</span> Each client trains the current global model on its local dataset
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-accent shrink-0">2.</span> Server sends global model without BN statistics
+                    <span className="shrink-0 text-accent">2.</span> Clients send model updates or weights back to the server
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-accent shrink-0">3.</span> Each client keeps and updates own BN statistics during training
+                    <span className="shrink-0 text-accent">3.</span> The server aggregates these client updates into a global update signal
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-accent shrink-0">4.</span> Only non-BN weights aggregated (weighted average)
+                    <span className="shrink-0 text-accent">4.</span> The server applies an optimizer step to update the global model parameters
                   </li>
                 </ul>
               </div>
 
               <div>
-                <h4 className="font-semibold text-foreground mb-2">Why Use FedBN</h4>
+                <h4 className="mb-2 font-semibold text-foreground">Why Use FedOPT</h4>
                 <ul className="space-y-1.5 text-sm text-muted-foreground">
                   <li className="flex gap-2">
-                    <span className="text-accent">•</span> Personalization without extra overhead
+                    <span className="text-accent">•</span> Better convergence than plain FedAvg in many settings
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-accent">•</span> Handles domain shift gracefully
+                    <span className="text-accent">•</span> More stable training on heterogeneous client data
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-accent">•</span> Improves accuracy on heterogeneous datasets
+                    <span className="text-accent">•</span> Supports adaptive optimizers for improved global updates
                   </li>
                 </ul>
               </div>
 
               {/* <div>
-                <h4 className="font-semibold text-foreground mb-2">Wind Forecasting Application</h4>
+                <h4 className="mb-2 font-semibold text-foreground">Wind Forecasting Application</h4>
                 <p className="text-sm text-muted-foreground">
-                  Ideal for federated scenarios where each wind farm has local climate variations but shares feature representations. 
-                  Local normalization adapts to each farm's data distribution naturally.
+                  FedOPT is useful in wind forecasting because wind farms often have non-IID data distributions.
+                  Adaptive server-side optimization can improve stability and global model quality across geographically
+                  different clients.
                 </p>
               </div> */}
             </div>
@@ -422,46 +424,46 @@ export default function ArchitecturePage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">FedBN Model Structure</CardTitle>
+              <CardTitle className="text-base">FedOPT Update Structure</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm">
               <div className="rounded-lg bg-muted p-4">
                 <code className="text-xs text-muted-foreground">
-                  <span className="text-primary">// Model separation</span>
+                  <span className="text-primary">// Client-server optimization flow</span>
                   <br />
                   <br />
-                  <span className="text-accent">GLOBAL (aggregated)</span>:
+                  <span className="text-accent">CLIENT SIDE</span>:
                   <br />
-                  &nbsp;&nbsp;Conv layers, Dense layers, Activation functions
+                  &nbsp;&nbsp;w_k ← local_train(w_t)
                   <br />
-                  <br />
-                  <span className="text-accent">LOCAL (not aggregated)</span>:
-                  <br />
-                  &nbsp;&nbsp;Batch Normalization parameters
-                  <br />
-                  &nbsp;&nbsp;Running mean, running variance, scale, bias
+                  &nbsp;&nbsp;Δ_k ← w_k - w_t
                   <br />
                   <br />
-                  <span className="text-primary">// During aggregation</span>
+                  <span className="text-accent">SERVER SIDE</span>:
                   <br />
-                  &nbsp;&nbsp;w_global ← aggregate(non_BN_weights)
+                  &nbsp;&nbsp;Δ ← aggregate(Δ_1, ..., Δ_K)
                   <br />
-                  &nbsp;&nbsp;BN_params_k ← kept locally
+                  &nbsp;&nbsp;w_(t+1) ← OptimizerUpdate(w_t, Δ)
+                  <br />
+                  <br />
+                  <span className="text-primary">// Example optimizers</span>
+                  <br />
+                  &nbsp;&nbsp;FedAdam, FedAdagrad, FedYogi
                 </code>
               </div>
               <div>
-                <h4 className="font-semibold text-xs text-foreground mb-2">Advantages</h4>
+                <h4 className="mb-2 text-xs font-semibold text-foreground">Advantages</h4>
                 <ul className="space-y-1 text-xs text-muted-foreground">
-                  <li>• Minimal communication overhead</li>
-                  <li>• Natural personalization mechanism</li>
-                  <li>• Compatible with standard networks</li>
+                  <li>• Stronger optimization at the server</li>
+                  <li>• Handles non-IID data more effectively</li>
+                  <li>• Flexible choice of adaptive optimizers</li>
                 </ul>
               </div>
               <div>
-                <h4 className="font-semibold text-xs text-foreground mb-2">Trade-offs</h4>
+                <h4 className="mb-2 text-xs font-semibold text-foreground">Trade-offs</h4>
                 <ul className="space-y-1 text-xs text-muted-foreground">
-                  <li>• Requires networks with BN layers</li>
-                  <li>• Less personalization than FedPer</li>
+                  <li>• More tuning needed for server hyperparameters</li>
+                  <li>• Slightly more complex than plain FedAvg</li>
                 </ul>
               </div>
             </CardContent>
@@ -470,7 +472,7 @@ export default function ArchitecturePage() {
       </section>
 
       {/* FedPer Detailed Explanation */}
-      <section className="bg-muted/30 mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
+      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
         <div className="grid gap-8 lg:grid-cols-2 items-start">
           <div>
             <SectionHeader
@@ -583,64 +585,66 @@ export default function ArchitecturePage() {
         </div>
       </section>
 
-      {/* SCAFFOLD Detailed Explanation */}
-      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-        <div className="grid gap-8 lg:grid-cols-2 items-start">
+      {/* FedLN Detailed Explanation */}
+      <section className="bg-muted/30 mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
+        <div className="grid gap-8 items-start lg:grid-cols-2">
           <div>
             <SectionHeader
               badge="Algorithm"
-              title="SCAFFOLD: Controlled Variance Reduction"
-              description="Uses control variates to correct client drift and achieve faster convergence."
+              title="FedLN: Federated Layer Normalization"
+              description="Improves federated training stability by using layer normalization, which is less sensitive to client heterogeneity and batch size differences."
             />
 
             <div className="mt-6 space-y-4">
               <div>
-                <h4 className="font-semibold text-foreground mb-2">Definition</h4>
+                <h4 className="mb-2 font-semibold text-foreground">Definition</h4>
                 <p className="text-sm text-muted-foreground">
-                  SCAFFOLD (Stochastic Controlled Averaging For Federated Learning) addresses the problem of client drift 
-                  by introducing control variates. These variates track and correct the divergence of each client's updates 
-                  from the global trajectory.
+                  FedLN is a federated learning approach that uses Layer Normalization instead of Batch Normalization to
+                  make training more stable across clients. Since Layer Normalization operates within each sample rather
+                  than across the batch, it is better suited for federated settings with non-IID data and varying local
+                  batch sizes.
                 </p>
               </div>
 
               <div>
-                <h4 className="font-semibold text-foreground mb-2">How It Works</h4>
+                <h4 className="mb-2 font-semibold text-foreground">How It Works</h4>
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   <li className="flex gap-2">
-                    <span className="text-accent shrink-0">1.</span> Maintain control variates: c (server) and c_k (client)
+                    <span className="shrink-0 text-accent">1.</span> Replace Batch Normalization layers with Layer Normalization layers
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-accent shrink-0">2.</span> Client gradient: g_k - c_k (corrected for drift)
+                    <span className="shrink-0 text-accent">2.</span> Each client trains the shared model locally using its own data
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-accent shrink-0">3.</span> Server aggregates: Δc = c + Σ(g_k - c_k) / n
+                    <span className="shrink-0 text-accent">3.</span> Layer normalization computes statistics per sample, not across the batch
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-accent shrink-0">4.</span> Update control variates: c ← Δc, c_k ← updated locally
+                    <span className="shrink-0 text-accent">4.</span> Client updates are aggregated normally at the server into the global model
                   </li>
                 </ul>
               </div>
 
               <div>
-                <h4 className="font-semibold text-foreground mb-2">Why Use SCAFFOLD</h4>
+                <h4 className="mb-2 font-semibold text-foreground">Why Use FedLN</h4>
                 <ul className="space-y-1.5 text-sm text-muted-foreground">
                   <li className="flex gap-2">
-                    <span className="text-accent">•</span> Reduces client drift (variance in local gradients)
+                    <span className="text-accent">•</span> More stable than BatchNorm with small local batch sizes
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-accent">•</span> Faster convergence than FedAvg
+                    <span className="text-accent">•</span> Better suited for heterogeneous client data distributions
                   </li>
                   <li className="flex gap-2">
-                    <span className="text-accent">•</span> Proven theoretically for non-convex optimization
+                    <span className="text-accent">•</span> Simpler normalization behavior across federated clients
                   </li>
                 </ul>
               </div>
 
               {/* <div>
-                <h4 className="font-semibold text-foreground mb-2">Wind Forecasting Application</h4>
+                <h4 className="mb-2 font-semibold text-foreground">Wind Forecasting Application</h4>
                 <p className="text-sm text-muted-foreground">
-                  Suitable when you need faster model convergence with highly distributed wind farm networks. 
-                  Control variates help maintain consistent training despite regional weather variations.
+                  FedLN can help in wind forecasting when different wind farms have uneven data volumes and varying local
+                  data distributions. Layer normalization improves training consistency without depending on batch-level
+                  statistics.
                 </p>
               </div> */}
             </div>
@@ -648,53 +652,173 @@ export default function ArchitecturePage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">SCAFFOLD Algorithm</CardTitle>
+              <CardTitle className="text-base">FedLN Algorithm</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm">
               <div className="rounded-lg bg-muted p-4">
                 <code className="text-xs text-muted-foreground">
-                  <span className="text-primary">// Control variate mechanism</span>
+                  <span className="text-primary">// Layer normalization mechanism</span>
                   <br />
                   <br />
-                  <span className="text-accent">// At each round:</span>
+                  <span className="text-accent">// At each client:</span>
                   <br />
-                  <span className="text-foreground">for</span> each client k:
+                  &nbsp;&nbsp;replace BatchNorm with LayerNorm
                   <br />
-                  &nbsp;&nbsp;Δy_k ← (g_k - c_k)  // corrected gradient
+                  &nbsp;&nbsp;train local model on client data
                   <br />
-                  &nbsp;&nbsp;c_k ← c_k + (∇L(w_k) - g_k)  // update control
-                  <br />
-                  <br />
-                  <span className="text-foreground">aggregate</span>:
-                  <br />
-                  &nbsp;&nbsp;Δc ← Σ Δy_k / n
-                  <br />
-                  &nbsp;&nbsp;c ← c + Δc  // server control variate
+                  &nbsp;&nbsp;normalize activations per sample
                   <br />
                   <br />
-                  <span className="text-muted-foreground">// Reduces variance in gradient aggregation</span>
+                  <span className="text-accent">// At server:</span>
+                  <br />
+                  &nbsp;&nbsp;collect client model updates
+                  <br />
+                  &nbsp;&nbsp;aggregate updates into global model
+                  <br />
+                  <br />
+                  <span className="text-muted-foreground">// Reduces sensitivity to batch statistics</span>
                 </code>
               </div>
               <div>
-                <h4 className="font-semibold text-xs text-foreground mb-2">Advantages</h4>
+                <h4 className="mb-2 text-xs font-semibold text-foreground">Advantages</h4>
                 <ul className="space-y-1 text-xs text-muted-foreground">
-                  <li>• Provably faster convergence</li>
-                  <li>• Better variance reduction</li>
-                  <li>• Works for non-convex problems</li>
+                  <li>• Stable with small batch sizes</li>
+                  <li>• Works well under non-IID data</li>
+                  <li>• No dependence on batch-level statistics</li>
                 </ul>
               </div>
               <div>
-                <h4 className="font-semibold text-xs text-foreground mb-2">Trade-offs</h4>
+                <h4 className="mb-2 text-xs font-semibold text-foreground">Trade-offs</h4>
                 <ul className="space-y-1 text-xs text-muted-foreground">
-                  <li>• Higher communication cost (sends c_k)</li>
-                  <li>• More complex implementation</li>
-                  <li>• Increased client-side memory</li>
+                  <li>• May differ from standard CNN BatchNorm setups</li>
+                  <li>• Can be less common in some vision architectures</li>
+                  <li>• Requires model design compatibility with LayerNorm</li>
                 </ul>
               </div>
             </CardContent>
           </Card>
         </div>
       </section>
+
+            {/* StatAvg Detailed Explanation */}
+      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
+        <div className="grid gap-8 items-start lg:grid-cols-2">
+          <div>
+            <SectionHeader
+              badge="Algorithm"
+              title="StatAvg: Statistical Averaging"
+              description="Mitigates feature distribution heterogeneity by sharing and averaging client-side data statistics before federated training."
+            />
+
+            <div className="mt-6 space-y-4">
+              <div>
+                <h4 className="mb-2 font-semibold text-foreground">Definition</h4>
+                <p className="text-sm text-muted-foreground">
+                  StatAvg is a federated learning method designed to reduce non-IID feature distribution differences
+                  across clients. Each client computes local statistics such as feature means and variances, the server
+                  aggregates them into global statistics, and these are used for consistent data normalization before or
+                  alongside the main federated training process.
+                </p>
+              </div>
+
+              <div>
+                <h4 className="mb-2 font-semibold text-foreground">How It Works</h4>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li className="flex gap-2">
+                    <span className="shrink-0 text-accent">1.</span> Each client computes local feature statistics from its own dataset
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="shrink-0 text-accent">2.</span> Clients send these statistics, not raw data, to the server
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="shrink-0 text-accent">3.</span> The server averages the received statistics to produce global normalization values
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="shrink-0 text-accent">4.</span> Clients use the shared global statistics for more consistent local training
+                  </li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="mb-2 font-semibold text-foreground">Why Use StatAvg</h4>
+                <ul className="space-y-1.5 text-sm text-muted-foreground">
+                  <li className="flex gap-2">
+                    <span className="text-accent">•</span> Reduces feature-level heterogeneity across clients
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-accent">•</span> Improves normalization consistency in non-IID settings
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-accent">•</span> Can be combined with standard FL aggregation methods
+                  </li>
+                </ul>
+              </div>
+
+              {/* <div>
+                <h4 className="mb-2 font-semibold text-foreground">Wind Forecasting Application</h4>
+                <p className="text-sm text-muted-foreground">
+                  StatAvg can help when wind farms have noticeably different feature distributions. Shared global
+                  normalization statistics can make training inputs more consistent before federated model aggregation.
+                </p>
+              </div> */}
+            </div>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">StatAvg Algorithm</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+              <div className="rounded-lg bg-muted p-4">
+                <code className="text-xs text-muted-foreground">
+                  <span className="text-primary">// Statistical averaging mechanism</span>
+                  <br />
+                  <br />
+                  <span className="text-accent">// At each client:</span>
+                  <br />
+                  &nbsp;&nbsp;compute local mean and variance
+                  <br />
+                  &nbsp;&nbsp;send statistics to server
+                  <br />
+                  <br />
+                  <span className="text-accent">// At server:</span>
+                  <br />
+                  &nbsp;&nbsp;μ_global ← average(μ_1, ..., μ_K)
+                  <br />
+                  &nbsp;&nbsp;σ²_global ← average(σ²_1, ..., σ²_K)
+                  <br />
+                  <br />
+                  <span className="text-accent">// Back to clients:</span>
+                  <br />
+                  &nbsp;&nbsp;normalize local data using μ_global and σ²_global
+                  <br />
+                  &nbsp;&nbsp;run federated training as usual
+                  <br />
+                  <br />
+                  <span className="text-muted-foreground">// Reduces non-IID feature distribution mismatch</span>
+                </code>
+              </div>
+              <div>
+                <h4 className="mb-2 text-xs font-semibold text-foreground">Advantages</h4>
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  <li>• Better global normalization consistency</li>
+                  <li>• Helps with heterogeneous feature distributions</li>
+                  <li>• Works with existing FL aggregation methods</li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="mb-2 text-xs font-semibold text-foreground">Trade-offs</h4>
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  <li>• Adds a statistics-sharing step before training</li>
+                  <li>• Mainly helps feature heterogeneity, not all FL issues</li>
+                  <li>• Effectiveness depends on useful shared statistics</li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
 
       {/* LLM Models */}
       <section className="bg-muted/50 py-12 sm:py-16">
@@ -821,6 +945,96 @@ export default function ArchitecturePage() {
                     </li>
                     <li className="flex gap-2">
                       <span className="text-accent">•</span> Multi-horizon forecasting
+                    </li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Qwen */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-primary" />
+                  Qwen
+                </CardTitle>
+                <CardDescription>Efficient Open-Source Transformer Model</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                <p className="text-muted-foreground">
+                  Strong open-source transformer model suitable for adapting sequence modeling and forecasting workflows in wind prediction tasks.
+                </p>
+                <div className="space-y-2">
+                  <h4 className="font-medium text-xs text-foreground">Key Features:</h4>
+                  <ul className="space-y-1 text-xs text-muted-foreground">
+                    <li className="flex gap-2">
+                      <span className="text-accent">•</span> Strong general language understanding
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="text-accent">•</span> Efficient fine-tuning potential
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="text-accent">•</span> Adaptable to sequence forecasting tasks
+                    </li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Gemma */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-primary" />
+                  Gemma
+                </CardTitle>
+                <CardDescription>Lightweight Open Language Model</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                <p className="text-muted-foreground">
+                  Compact open model designed for efficient deployment, making it useful for resource-aware wind forecasting and edge-oriented experiments.
+                </p>
+                <div className="space-y-2">
+                  <h4 className="font-medium text-xs text-foreground">Key Features:</h4>
+                  <ul className="space-y-1 text-xs text-muted-foreground">
+                    <li className="flex gap-2">
+                      <span className="text-accent">•</span> Lightweight architecture
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="text-accent">•</span> Efficient deployment on limited hardware
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="text-accent">•</span> Good for scalable experimentation
+                    </li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* OPT */}
+            <Card className="md:col-span-2 md:mx-auto md:w-[calc(50%-0.75rem)]">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-primary" />
+                  OPT
+                </CardTitle>
+                <CardDescription>Open Pre-trained Transformer</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                <p className="text-muted-foreground">
+                  Meta&apos;s open pre-trained transformer family provides a flexible baseline for adapting large language models to wind forecasting and temporal prediction tasks.
+                </p>
+                <div className="space-y-2">
+                  <h4 className="font-medium text-xs text-foreground">Key Features:</h4>
+                  <ul className="space-y-1 text-xs text-muted-foreground">
+                    <li className="flex gap-2">
+                      <span className="text-accent">•</span> Open and reproducible model family
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="text-accent">•</span> Suitable as a strong research baseline
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="text-accent">•</span> Flexible adaptation for forecasting tasks
                     </li>
                   </ul>
                 </div>

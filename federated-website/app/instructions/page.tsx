@@ -284,10 +284,13 @@ export default function InstructionsPage() {
                     title="Configure Training Parameters"
                     description="Choose your model, algorithm, and training settings on the dashboard."
                     details={[
-                      "Training Model: GPT4TS, LLAMA, BERT, or BART",
-                      "Federated Algorithm: FedAvg, FedProx, FedBN, FedPer, or SCAFFOLD",
+                      "Training Model: GPT4TS, LLAMA, BERT, BART, Qwen, Gemma or OPT",
+                      "FL Algorithm: FedAvg, FedProx, FedOPT, FedPer, FedLN or StatAvg",
                       "Prediction Length: 1, 3, 6, 36, 72, 144, or 432 hours",
                       "Number of Clients: 1-10 (for federated scenarios)",
+                      "Communication Rounds: 1-50 FL aggregation rounds",
+                      "Local Epochs per Round: 1-10 training epochs per client per round",
+                      "LLM Layers: 1-12 transformer layers used from the LLM backbone",
                       "Dropout Rate: 0.0-0.5 for regularization",
                     ]}
                   />
