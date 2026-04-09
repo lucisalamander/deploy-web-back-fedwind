@@ -80,7 +80,7 @@ export default function DashboardPage() {
   // Form state
   const [files, setFiles] = useState<File[]>([])
   const [predictionLength, setPredictionLength] = useState("6")
-  const [trainingModel, setTrainingModel] = useState("GPT4TS")
+  const [trainingModel, setTrainingModel] = useState("GPT4TS_LINEAR")
   const [federalAlgorithm, setFederalAlgorithm] = useState("FedAvg")
   const [numClients, setNumClients] = useState("5")
   const [numRounds, setNumRounds] = useState("5")
@@ -1097,23 +1097,16 @@ const renderConversationNode = (
                       <SelectValue placeholder="Select model" />
                     </SelectTrigger>
                     <SelectContent>
-                    <SelectItem value="GPT4TS">GPT4TS (Nonlinear)</SelectItem>
-                    <SelectItem value="GPT4TS_LINEAR">GPT4TS (Linear)</SelectItem>
-                    <SelectItem value="LLAMA">LLaMA (Nonlinear)</SelectItem>
-                    <SelectItem value="LLAMA_LINEAR">LLaMA (Linear)</SelectItem>
-                    <SelectItem value="BERT">BERT (Nonlinear)</SelectItem>
-                    <SelectItem value="BERT_LINEAR">BERT (Linear)</SelectItem>
-                    <SelectItem value="BART">BART (Nonlinear)</SelectItem>
-                    <SelectItem value="BART_LINEAR">BART (Linear)</SelectItem>
-                    <SelectItem value="OPT">OPT (Nonlinear)</SelectItem>
-                    <SelectItem value="OPT_LINEAR">OPT (Linear)</SelectItem>
-                    <SelectItem value="GEMMA">Gemma (Nonlinear)</SelectItem>
-                    <SelectItem value="GEMMA_LINEAR">Gemma (Linear)</SelectItem>
-                    <SelectItem value="QWEN">Qwen (Nonlinear)</SelectItem>
-                    <SelectItem value="QWEN_LINEAR">Qwen (Linear)</SelectItem>
+                      <SelectItem value="GPT4TS_LINEAR">GPT4TS</SelectItem>
+                      <SelectItem value="LLAMA_LINEAR">LLaMA</SelectItem>
+                      <SelectItem value="BERT_LINEAR">BERT</SelectItem>
+                      <SelectItem value="BART_LINEAR">BART</SelectItem>
+                      <SelectItem value="OPT_LINEAR">OPT</SelectItem>
+                      <SelectItem value="GEMMA_LINEAR">Gemma</SelectItem>
+                      <SelectItem value="QWEN_LINEAR">Qwen</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">Selected: {trainingModel}</p>
+                  <p className="text-xs text-muted-foreground">Selected: {trainingModel.replace("_LINEAR", "")}</p>
                 </div>
 
                 {/* Prediction Length */}
