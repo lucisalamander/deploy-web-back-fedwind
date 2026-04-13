@@ -108,6 +108,9 @@ export default function DashboardPage() {
   // Federated advanced toggle
   const [showFedAdvanced, setShowFedAdvanced] = useState(false)
 
+  const [showCentralAdvancedInfo, setShowCentralAdvancedInfo] = useState(true)
+  const [showFedAdvancedInfo, setShowFedAdvancedInfo] = useState(true)
+
   // Optimized defaults per prediction length (centralized)
   const CENT_DEFAULTS: Record<string, Record<string, string>> = {
     "1":   { lr: "0.0001329291894316216", llm_layers: "2", epochs: "20", local_epochs: "5", weight_decay: "0.0004335281794951569", batch_size: "64", dropout: "0.2", warmup_rounds: "3", patch_size: "16", patch_stride: "16", hidden_size: "80", kernel_size: "7" },
@@ -161,6 +164,8 @@ export default function DashboardPage() {
   const handlePredLenChange = (val: string) => {
     setPredictionLength(val)
     setHorizon(val)
+    setShowCentralAdvancedInfo(true)
+    setShowFedAdvancedInfo(true)
     applyPredLenDefaults(val, mode)
   }
 
@@ -1114,9 +1119,9 @@ const renderConversationNode = (
 
       {/* Main Dashboard */}
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <StaggerContainer className="grid gap-6 lg:grid-cols-3">
+        <StaggerContainer className="grid gap-6 xl:grid-cols-3">
           {/* Controls Panel */}
-          <StaggerItem className="lg:col-span-1">
+          <StaggerItem className="xl:col-span-1">
             <Card className="h-full">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1257,91 +1262,164 @@ const renderConversationNode = (
 
                 {/* Advanced params - centralized only */}
                 {mode === "centralized" && showAdvanced && (
-                  <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Advanced Parameters</p>
+                  <div className="relative space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+                    {showCentralAdvancedInfo && (
+                      <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 2xl:absolute 2xl:left-[-14rem] 2xl:top-0 2xl:mb-0 2xl:w-44">
+                        <button
+                          type="button"
+                          onClick={() => setShowCentralAdvancedInfo(false)}
+                          className="absolute right-2 top-2 text-lg font-semibold leading-none text-blue-700 hover:text-blue-900"
+                          aria-label="Close advanced info"
+                        >
+                          ×
+                        </button>
+                        <p className="pr-4 font-medium">Recommended defaults</p>
+                        <p className="mt-1">
+                          These advanced parameters are pre-filled with best-performing settings for prediction length {predictionLength}, based on prior experiments.
+                        </p>
+                      </div>
+                    )}
+
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Advanced Parameters
+                    </p>
 
                     {/* Dropout Rate */}
                     <div className="space-y-1">
                       <Label htmlFor="dropout" className="text-xs">Dropout Rate</Label>
-                      <input id="dropout" type="number" min="0" max="0.5" step="0.05" value={dropoutRate}
+                      <input
+                        id="dropout"
+                        type="number"
+                        min="0"
+                        max="0.5"
+                        step="0.05"
+                        value={dropoutRate}
                         onChange={(e) => {
                           const val = parseFloat(e.target.value)
                           if (val >= 0 && val <= 0.5) setDropoutRate(e.target.value)
                         }}
                         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        placeholder="0.2" />
+                        placeholder="0.2"
+                      />
                     </div>
 
                     {/* LLM Layers */}
                     <div className="space-y-1">
                       <Label htmlFor="cent-llm-layers" className="text-xs">LLM Layers</Label>
-                      <input id="cent-llm-layers" type="number" min="1" max="12" value={centLlmLayers}
+                      <input
+                        id="cent-llm-layers"
+                        type="number"
+                        min="1"
+                        max="12"
+                        value={centLlmLayers}
                         onChange={(e) => setCentLlmLayers(e.target.value)}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      />
                     </div>
 
                     {/* Epochs */}
                     <div className="space-y-1">
                       <Label htmlFor="epochs" className="text-xs">Epochs (Rounds)</Label>
-                      <input id="epochs" type="number" min="1" max="100" value={epochs}
+                      <input
+                        id="epochs"
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={epochs}
                         onChange={(e) => setEpochs(e.target.value)}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      />
                     </div>
 
                     {/* Batch Size */}
                     <div className="space-y-1">
                       <Label htmlFor="batch-size" className="text-xs">Batch Size</Label>
-                      <input id="batch-size" type="number" min="1" value={batchSize}
+                      <input
+                        id="batch-size"
+                        type="number"
+                        min="1"
+                        value={batchSize}
                         onChange={(e) => setBatchSize(e.target.value)}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      />
                     </div>
 
                     {/* Weight Decay */}
                     <div className="space-y-1">
                       <Label htmlFor="weight-decay" className="text-xs">Weight Decay</Label>
-                      <input id="weight-decay" type="text" inputMode="decimal" value={weightDecay}
+                      <input
+                        id="weight-decay"
+                        type="text"
+                        inputMode="decimal"
+                        value={weightDecay}
                         onChange={(e) => setWeightDecay(e.target.value)}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      />
                     </div>
 
                     {/* Warmup Rounds */}
                     <div className="space-y-1">
                       <Label htmlFor="warmup" className="text-xs">Warmup Rounds</Label>
-                      <input id="warmup" type="number" min="0" value={warmupRounds}
+                      <input
+                        id="warmup"
+                        type="number"
+                        min="0"
+                        value={warmupRounds}
                         onChange={(e) => setWarmupRounds(e.target.value)}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      />
                     </div>
 
                     {/* Patch Size / Stride */}
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
                         <Label htmlFor="patch-size" className="text-xs">Patch Size</Label>
-                        <input id="patch-size" type="number" min="1" value={patchSize}
+                        <input
+                          id="patch-size"
+                          type="number"
+                          min="1"
+                          value={patchSize}
                           onChange={(e) => setPatchSize(e.target.value)}
-                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        />
                       </div>
                       <div className="space-y-1">
                         <Label htmlFor="patch-stride" className="text-xs">Patch Stride</Label>
-                        <input id="patch-stride" type="number" min="1" value={patchStride}
+                        <input
+                          id="patch-stride"
+                          type="number"
+                          min="1"
+                          value={patchStride}
                           onChange={(e) => setPatchStride(e.target.value)}
-                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        />
                       </div>
                     </div>
 
                     {/* Hidden Size */}
                     <div className="space-y-1">
                       <Label htmlFor="hidden-size" className="text-xs">Hidden Size</Label>
-                      <input id="hidden-size" type="number" min="1" value={hiddenSize}
+                      <input
+                        id="hidden-size"
+                        type="number"
+                        min="1"
+                        value={hiddenSize}
                         onChange={(e) => setHiddenSize(e.target.value)}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      />
                     </div>
 
                     {/* Kernel Size */}
                     <div className="space-y-1">
                       <Label htmlFor="kernel-size" className="text-xs">Kernel Size</Label>
-                      <input id="kernel-size" type="number" min="1" value={kernelSize}
+                      <input
+                        id="kernel-size"
+                        type="number"
+                        min="1"
+                        value={kernelSize}
                         onChange={(e) => setKernelSize(e.target.value)}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      />
                     </div>
                   </div>
                 )}
@@ -1438,105 +1516,189 @@ const renderConversationNode = (
 
                     {/* Advanced panel */}
                     {showFedAdvanced && (
-                      <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Advanced Parameters</p>
+                      <div className="relative space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+                        {showFedAdvancedInfo && (
+                          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 2xl:absolute 2xl:left-[-14rem] 2xl:top-0 2xl:mb-0 2xl:w-44">
+                            <button
+                              type="button"
+                              onClick={() => setShowFedAdvancedInfo(false)}
+                              className="absolute right-2 top-2 text-lg font-semibold leading-none text-blue-700 hover:text-blue-900"
+                              aria-label="Close advanced info"
+                            >
+                              ×
+                            </button>
+                            <p className="pr-4 font-medium">Recommended defaults</p>
+                            <p className="mt-1">
+                              These advanced parameters are pre-filled with best-performing settings for prediction length {predictionLength}, based on prior experiments.
+                            </p>
+                          </div>
+                        )}
+
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Advanced Parameters
+                        </p>
 
                         {/* Dropout */}
                         <div className="space-y-1">
                           <Label htmlFor="fed-dropout" className="text-xs">Dropout Rate</Label>
-                          <input id="fed-dropout" type="number" min="0" max="1" step="0.05" value={dropoutRate}
+                          <input
+                            id="fed-dropout"
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={dropoutRate}
                             onChange={(e) => setDropoutRate(e.target.value)}
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          />
                         </div>
 
                         {/* LLM Layers */}
                         <div className="space-y-1">
                           <Label htmlFor="fed-llm-layers" className="text-xs">LLM Layers</Label>
-                          <input id="fed-llm-layers" type="number" min="1" max="12" value={llmLayers}
+                          <input
+                            id="fed-llm-layers"
+                            type="number"
+                            min="1"
+                            max="12"
+                            value={llmLayers}
                             onChange={(e) => setLlmLayers(e.target.value)}
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          />
                         </div>
 
                         {/* Rounds */}
                         <div className="space-y-1">
                           <Label htmlFor="fed-rounds" className="text-xs">Communication Rounds</Label>
-                          <input id="fed-rounds" type="number" min="1" max="50" value={numRounds}
+                          <input
+                            id="fed-rounds"
+                            type="number"
+                            min="1"
+                            max="50"
+                            value={numRounds}
                             onChange={(e) => setNumRounds(e.target.value)}
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          />
                         </div>
 
                         {/* Local Epochs */}
                         <div className="space-y-1">
                           <Label htmlFor="fed-local-epochs" className="text-xs">Local Epochs per Round</Label>
-                          <input id="fed-local-epochs" type="number" min="1" max="20" value={localEpochs}
+                          <input
+                            id="fed-local-epochs"
+                            type="number"
+                            min="1"
+                            max="20"
+                            value={localEpochs}
                             onChange={(e) => setLocalEpochs(e.target.value)}
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          />
                         </div>
 
                         {/* Batch Size */}
                         <div className="space-y-1">
                           <Label htmlFor="fed-batch" className="text-xs">Batch Size</Label>
-                          <input id="fed-batch" type="number" min="1" value={batchSize}
+                          <input
+                            id="fed-batch"
+                            type="number"
+                            min="1"
+                            value={batchSize}
                             onChange={(e) => setBatchSize(e.target.value)}
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          />
                         </div>
 
                         {/* Weight Decay */}
                         <div className="space-y-1">
                           <Label htmlFor="fed-wd" className="text-xs">Weight Decay</Label>
-                          <input id="fed-wd" type="text" inputMode="decimal" value={weightDecay}
+                          <input
+                            id="fed-wd"
+                            type="text"
+                            inputMode="decimal"
+                            value={weightDecay}
                             onChange={(e) => setWeightDecay(e.target.value)}
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          />
                         </div>
 
                         {/* Warmup Rounds */}
                         <div className="space-y-1">
                           <Label htmlFor="fed-warmup" className="text-xs">Warmup Rounds</Label>
-                          <input id="fed-warmup" type="number" min="0" value={warmupRounds}
+                          <input
+                            id="fed-warmup"
+                            type="number"
+                            min="0"
+                            value={warmupRounds}
                             onChange={(e) => setWarmupRounds(e.target.value)}
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          />
                         </div>
 
                         {/* Patch Size / Stride */}
                         <div className="grid grid-cols-2 gap-2">
                           <div className="space-y-1">
                             <Label htmlFor="fed-patch-size" className="text-xs">Patch Size</Label>
-                            <input id="fed-patch-size" type="number" min="1" value={patchSize}
+                            <input
+                              id="fed-patch-size"
+                              type="number"
+                              min="1"
+                              value={patchSize}
                               onChange={(e) => setPatchSize(e.target.value)}
-                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            />
                           </div>
                           <div className="space-y-1">
                             <Label htmlFor="fed-patch-stride" className="text-xs">Patch Stride</Label>
-                            <input id="fed-patch-stride" type="number" min="1" value={patchStride}
+                            <input
+                              id="fed-patch-stride"
+                              type="number"
+                              min="1"
+                              value={patchStride}
                               onChange={(e) => setPatchStride(e.target.value)}
-                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            />
                           </div>
                         </div>
 
                         {/* Hidden Size */}
                         <div className="space-y-1">
                           <Label htmlFor="fed-hidden" className="text-xs">Hidden Size</Label>
-                          <input id="fed-hidden" type="number" min="1" value={hiddenSize}
+                          <input
+                            id="fed-hidden"
+                            type="number"
+                            min="1"
+                            value={hiddenSize}
                             onChange={(e) => setHiddenSize(e.target.value)}
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          />
                         </div>
 
                         {/* Kernel Size */}
                         <div className="space-y-1">
                           <Label htmlFor="fed-kernel" className="text-xs">Kernel Size</Label>
-                          <input id="fed-kernel" type="number" min="1" value={kernelSize}
+                          <input
+                            id="fed-kernel"
+                            type="number"
+                            min="1"
+                            value={kernelSize}
                             onChange={(e) => setKernelSize(e.target.value)}
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          />
                         </div>
 
                         {/* Proximal Mu (FedProx only) */}
                         {federalAlgorithm === "FedProx" && (
                           <div className="space-y-1">
                             <Label htmlFor="fed-mu" className="text-xs">Proximal Mu (FedProx)</Label>
-                            <input id="fed-mu" type="text" inputMode="decimal" value={proximalMu}
+                            <input
+                              id="fed-mu"
+                              type="text"
+                              inputMode="decimal"
+                              value={proximalMu}
                               onChange={(e) => setProximalMu(e.target.value)}
                               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                              placeholder="0.0014270403521460836" />
+                              placeholder="0.0014270403521460836"
+                            />
                           </div>
                         )}
                       </div>
@@ -1567,7 +1729,7 @@ const renderConversationNode = (
           </StaggerItem>
 
           {/* Results Panel */}
-          <StaggerItem className="lg:col-span-2">
+          <StaggerItem className="xl:col-span-2">
             <Card className="h-full">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
