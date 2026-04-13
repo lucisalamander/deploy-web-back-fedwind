@@ -65,3 +65,8 @@ CLAUDE.md
 program.md
 auto_results.tsv
 
+node_modules/
+.next/
+uploads/
+models/
+feedback/
