@@ -135,7 +135,7 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
         if "-END HEADER-" not in csv_content:
             nasa_header = (
                 "-BEGIN HEADER-\n"
-                "NASA/POWER Source — user upload\n"
+                "NASA/POWER Source - user upload\n"
                 "-END HEADER-\n"
             )
             csv_content = nasa_header + csv_content
@@ -154,23 +154,46 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     else:
         logger.info("[STEP 4a] No csv_path — training on existing KZMET data")
 
+    # ── [ISSAI] Original command (conda + multi-GPU auto-select on ISSAI servers) ──
+    # cmd = [
+    #     "bash", "-c",
+    #     "source /home/tin_trungchau/miniconda3/etc/profile.d/conda.sh && "
+    #     "conda activate /home/tin_trungchau/miniconda3/envs/flwr39 && "
+    #     "export CUDA_VISIBLE_DEVICES=$(nvidia-smi --query-gpu=index,memory.used "
+    #     "--format=csv,noheader,nounits | sort -t',' -k2 -n | head -1 | cut -d',' -f1 | tr -d ' ') && "
+    #     "echo \"Selected GPU: $CUDA_VISIBLE_DEVICES\" && "
+    #     f"python {RUN_SCRIPT} "
+    #     f"--exp-dir {exp_dir} "
+    #     f"--rounds {inp.epochs} "
+    #     f"--pred-len {inp.prediction_length} "
+    #     f"--lr {inp.learning_rate} "
+    #     f"--batch-size {inp.batch_size} "
+    #     f"--seq-len {inp.seq_len} "
+    #     f"--dropout {inp.dropout_rate} "
+    #     f"--model {internal_model} "
+    #     f"--dataset-name KZMET"
+    # ]
+
+    # ── [LOCAL] Direct Python call — no conda, uses TRAINING_PYTHON from .env ──
     cmd = [
-        "bash", "-c",
-        "source /home/tin_trungchau/miniconda3/etc/profile.d/conda.sh && "
-        "conda activate /home/tin_trungchau/miniconda3/envs/flwr39 && "
-        "export CUDA_VISIBLE_DEVICES=$(nvidia-smi --query-gpu=index,memory.used "
-        "--format=csv,noheader,nounits | sort -t',' -k2 -n | head -1 | cut -d',' -f1 | tr -d ' ') && "
-        "echo \"Selected GPU: $CUDA_VISIBLE_DEVICES\" && "
-        f"python {RUN_SCRIPT} "
-        f"--exp-dir {exp_dir} "
-        f"--rounds {inp.epochs} "
-        f"--pred-len {inp.prediction_length} "
-        f"--lr {inp.learning_rate} "
-        f"--batch-size {inp.batch_size} "
-        f"--seq-len {inp.seq_len} "
-        f"--dropout {inp.dropout_rate} "
-        f"--model {internal_model} "
-        f"--dataset-name KZMET"
+        TRAINING_PYTHON,
+        RUN_SCRIPT,
+        "--exp-dir", exp_dir,
+        "--rounds", str(inp.epochs),
+        "--pred-len", str(inp.prediction_length),
+        "--lr", str(inp.learning_rate),
+        "--batch-size", str(inp.batch_size),
+        "--seq-len", str(inp.seq_len),
+        "--dropout", str(inp.dropout_rate),
+        "--model", internal_model,
+        "--dataset-name", "KZMET",
+        "--llm-layers", str(inp.llm_layers),
+        "--weight-decay", str(inp.weight_decay),
+        "--warmup-rounds", str(inp.warmup_rounds),
+        "--patch-size", str(inp.patch_size),
+        "--patch-stride", str(inp.patch_stride),
+        "--hidden-size", str(inp.hidden_size),
+        "--kernel-size", str(inp.kernel_size),
     ]
 
     env = os.environ.copy()

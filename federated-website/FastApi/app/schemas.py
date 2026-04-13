@@ -38,7 +38,7 @@ class TrainingMode(str, Enum):
     FEDERATED = "federated"
 
 
-VALID_PREDICTION_LENGTHS = [1, 3, 6, 36, 72, 144, 432]
+VALID_PREDICTION_LENGTHS = [1, 72, 432]
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +106,19 @@ class TrainingConfig(BaseModel):
         le=12,
         description="Number of LLM transformer layers",
     )
+    # Federated advanced params
+    proximal_mu: Optional[float] = Field(default=None, description="FedProx proximal term mu")
+    # Centralized advanced params (optional, have sensible defaults)
+    learning_rate: Optional[float] = Field(default=None, description="Learning rate override")
+    batch_size: Optional[int] = Field(default=None, description="Batch size override")
+    seq_len: Optional[int] = Field(default=None, description="Input sequence length override")
+    epochs: Optional[int] = Field(default=None, description="Training epochs override")
+    weight_decay: Optional[float] = Field(default=None, description="Weight decay override")
+    warmup_rounds: Optional[int] = Field(default=None, description="Warmup rounds override")
+    patch_size: Optional[int] = Field(default=None, description="Patch size override")
+    patch_stride: Optional[int] = Field(default=None, description="Patch stride override")
+    hidden_size: Optional[int] = Field(default=None, description="Hidden size override")
+    kernel_size: Optional[int] = Field(default=None, description="Kernel size override")
 
 
 # ---------------------------------------------------------------------------
@@ -207,9 +220,16 @@ class TrainingInput(BaseModel):
     dropout_rate: float = Field(description="Dropout for regularization")
     # Defaults used by the training repo
     seq_len: int = Field(default=336, description="Input sequence length")
-    batch_size: int = Field(default=32, description="Training batch size")
-    learning_rate: float = Field(default=0.0001, description="Learning rate")
-    epochs: int = Field(default=10, description="Training epochs")
+    batch_size: int = Field(default=64, description="Training batch size")
+    learning_rate: float = Field(default=0.0001329291894316216, description="Learning rate")
+    epochs: int = Field(default=20, description="Training epochs")
+    llm_layers: int = Field(default=2, description="Number of LLM layers")
+    weight_decay: float = Field(default=0.0004335281794951569, description="Weight decay")
+    warmup_rounds: int = Field(default=3, description="Warmup rounds")
+    patch_size: int = Field(default=16, description="Patch size")
+    patch_stride: int = Field(default=16, description="Patch stride")
+    hidden_size: int = Field(default=80, description="Hidden size")
+    kernel_size: int = Field(default=7, description="Kernel size")
 
 
 class TrainingOutput(BaseModel):
@@ -248,6 +268,13 @@ class FederatedTrainingInput(BaseModel):
     rounds: int = Field(default=5, description="Federated communication rounds")
     local_epochs: int = Field(default=1, description="Local training epochs per round")
     llm_layers: int = Field(default=4, description="Number of LLM layers to use")
+    proximal_mu: Optional[float] = Field(default=None, description="FedProx proximal term mu")
+    weight_decay: Optional[float] = Field(default=None, description="Weight decay")
+    warmup_rounds: Optional[int] = Field(default=None, description="Warmup rounds")
+    patch_size: Optional[int] = Field(default=None, description="Patch size")
+    patch_stride: Optional[int] = Field(default=None, description="Patch stride")
+    hidden_size: Optional[int] = Field(default=None, description="Hidden size")
+    kernel_size: Optional[int] = Field(default=None, description="Kernel size")
 
 
 class FederatedTrainingOutput(BaseModel):

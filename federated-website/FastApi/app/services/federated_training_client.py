@@ -113,7 +113,7 @@ def run_federated_training(inp: FederatedTrainingInput) -> FederatedTrainingOutp
             csv_content = f.read()
 
         if "-END HEADER-" not in csv_content:
-            nasa_header = "-BEGIN HEADER-\nNASA/POWER Source — user upload\n-END HEADER-\n"
+            nasa_header = "-BEGIN HEADER-\nNASA/POWER Source - user upload\n-END HEADER-\n"
             csv_content = nasa_header + csv_content
 
         os.makedirs(dataset_dir, exist_ok=True)

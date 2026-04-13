@@ -79,7 +79,7 @@ const mockForecastData = [
 export default function DashboardPage() {
   // Form state
   const [files, setFiles] = useState<File[]>([])
-  const [predictionLength, setPredictionLength] = useState("6")
+  const [predictionLength, setPredictionLength] = useState("1")
   const [trainingModel, setTrainingModel] = useState("GPT4TS_LINEAR")
   const [federalAlgorithm, setFederalAlgorithm] = useState("FedAvg")
   const [numClients, setNumClients] = useState("5")
@@ -88,7 +88,86 @@ export default function DashboardPage() {
   const [llmLayers, setLlmLayers] = useState("4")
   const [dropoutRate, setDropoutRate] = useState("0.2")
   const [mode, setMode] = useState("federated")
-  const [horizon, setHorizon] = useState("6") // Declared horizon state
+  const [horizon, setHorizon] = useState("1") // Declared horizon state
+
+  // Centralized advanced params
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [learningRate, setLearningRate] = useState("0.0001329291894316216")
+  const [batchSize, setBatchSize] = useState("64")
+  const [seqLen, setSeqLen] = useState("336")
+  const [epochs, setEpochs] = useState("20")
+  const [weightDecay, setWeightDecay] = useState("0.0004335281794951569")
+  const [warmupRounds, setWarmupRounds] = useState("3")
+  const [patchSize, setPatchSize] = useState("16")
+  const [patchStride, setPatchStride] = useState("16")
+  const [hiddenSize, setHiddenSize] = useState("80")
+  const [kernelSize, setKernelSize] = useState("7")
+  const [centLlmLayers, setCentLlmLayers] = useState("2")
+  const [proximalMu, setProximalMu] = useState("")
+
+  // Federated advanced toggle
+  const [showFedAdvanced, setShowFedAdvanced] = useState(false)
+
+  // Optimized defaults per prediction length (centralized)
+  const CENT_DEFAULTS: Record<string, Record<string, string>> = {
+    "1":   { lr: "0.0001329291894316216", llm_layers: "2", epochs: "20", local_epochs: "5", weight_decay: "0.0004335281794951569", batch_size: "64", dropout: "0.2", warmup_rounds: "3", patch_size: "16", patch_stride: "16", hidden_size: "80", kernel_size: "7" },
+    "72":  { lr: "0.0001329291894316216", llm_layers: "2", epochs: "20", local_epochs: "5", weight_decay: "0.0004335281794951569", batch_size: "64", dropout: "0.2", warmup_rounds: "3", patch_size: "16", patch_stride: "16", hidden_size: "80", kernel_size: "7" },
+    "432": { lr: "0.0001329291894316216", llm_layers: "2", epochs: "20", local_epochs: "5", weight_decay: "0.0004335281794951569", batch_size: "64", dropout: "0.2", warmup_rounds: "3", patch_size: "16", patch_stride: "16", hidden_size: "80", kernel_size: "7" },
+  }
+
+  // Optimized defaults per prediction length (federated)
+  const FED_DEFAULTS: Record<string, Record<string, string>> = {
+    "1":   { lr: "0.0028292192255361887", llm_layers: "2", rounds: "19", local_epochs: "5", weight_decay: "0.021858816162324185", batch_size: "64", dropout: "0.30000000000000004", warmup_rounds: "0", patch_size: "32", patch_stride: "16", hidden_size: "48", kernel_size: "7", strategy: "FedAvg", proximal_mu: "" },
+    "72":  { lr: "1.2199668475623259e-05", llm_layers: "2", rounds: "19", local_epochs: "2", weight_decay: "0.0034831202446644234", batch_size: "64", dropout: "0.5",                   warmup_rounds: "1", patch_size: "16", patch_stride: "8",  hidden_size: "24", kernel_size: "5", strategy: "FedAvg", proximal_mu: "" },
+    "432": { lr: "3.0455368715396772e-05", llm_layers: "2", rounds: "10", local_epochs: "1", weight_decay: "0.00048284249748183273", batch_size: "32", dropout: "0.25",                  warmup_rounds: "4", patch_size: "32", patch_stride: "16", hidden_size: "40", kernel_size: "3", strategy: "FedProx", proximal_mu: "0.0014270403521460836" },
+  }
+
+  const applyPredLenDefaults = (predLen: string, currentMode: string) => {
+    if (currentMode === "centralized") {
+      const d = CENT_DEFAULTS[predLen]
+      if (!d) return
+      setLearningRate(d.lr)
+      setCentLlmLayers(d.llm_layers)
+      setEpochs(d.epochs)
+      setLocalEpochs(d.local_epochs)
+      setWeightDecay(d.weight_decay)
+      setBatchSize(d.batch_size)
+      setDropoutRate(d.dropout)
+      setWarmupRounds(d.warmup_rounds)
+      setPatchSize(d.patch_size)
+      setPatchStride(d.patch_stride)
+      setHiddenSize(d.hidden_size)
+      setKernelSize(d.kernel_size)
+    } else {
+      const d = FED_DEFAULTS[predLen]
+      if (!d) return
+      setLearningRate(d.lr)
+      setLlmLayers(d.llm_layers)
+      setNumRounds(d.rounds)
+      setLocalEpochs(d.local_epochs)
+      setWeightDecay(d.weight_decay)
+      setBatchSize(d.batch_size)
+      setDropoutRate(d.dropout)
+      setWarmupRounds(d.warmup_rounds)
+      setPatchSize(d.patch_size)
+      setPatchStride(d.patch_stride)
+      setHiddenSize(d.hidden_size)
+      setKernelSize(d.kernel_size)
+      setFederalAlgorithm(d.strategy)
+      setProximalMu(d.proximal_mu)
+    }
+  }
+
+  const handlePredLenChange = (val: string) => {
+    setPredictionLength(val)
+    setHorizon(val)
+    applyPredLenDefaults(val, mode)
+  }
+
+  const handleModeChange = (val: string) => {
+    setMode(val)
+    applyPredLenDefaults(predictionLength, val)
+  }
 
   // Processing state
   const [isProcessing, setIsProcessing] = useState(false)
@@ -743,7 +822,17 @@ const renderConversationNode = (
           num_clients: parseInt(numClients),
           num_rounds: parseInt(numRounds),
           local_epochs: parseInt(localEpochs),
-          llm_layers: parseInt(llmLayers),
+          llm_layers: parseInt(centLlmLayers),
+          learning_rate: parseFloat(learningRate),
+          batch_size: parseInt(batchSize),
+          seq_len: parseInt(seqLen),
+          epochs: parseInt(epochs),
+          weight_decay: parseFloat(weightDecay),
+          warmup_rounds: parseInt(warmupRounds),
+          patch_size: parseInt(patchSize),
+          patch_stride: parseInt(patchStride),
+          hidden_size: parseInt(hiddenSize),
+          kernel_size: parseInt(kernelSize),
         }
 
         const result = await startTraining(trainFilename, config)
@@ -788,6 +877,15 @@ const renderConversationNode = (
           num_rounds: parseInt(numRounds),
           local_epochs: parseInt(localEpochs),
           llm_layers: parseInt(llmLayers),
+          learning_rate: parseFloat(learningRate),
+          batch_size: parseInt(batchSize),
+          weight_decay: parseFloat(weightDecay),
+          warmup_rounds: parseInt(warmupRounds),
+          patch_size: parseInt(patchSize),
+          patch_stride: parseInt(patchStride),
+          hidden_size: parseInt(hiddenSize),
+          kernel_size: parseInt(kernelSize),
+          ...(federalAlgorithm === "FedProx" && proximalMu ? { proximal_mu: parseFloat(proximalMu) } : {}),
         }
 
         const result = await startTraining(trainFilename, config)
@@ -1112,52 +1210,146 @@ const renderConversationNode = (
                 {/* Prediction Length */}
                 <div className="space-y-2">
                   <Label htmlFor="prediction-length">Prediction Length (Steps)</Label>
-                  <Select value={predictionLength} onValueChange={setPredictionLength}>
+                  <Select value={predictionLength} onValueChange={handlePredLenChange}>
                     <SelectTrigger id="prediction-length">
                       <SelectValue placeholder="Select prediction length" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">1 step</SelectItem>
-                      <SelectItem value="3">3 steps</SelectItem>
-                      <SelectItem value="6">6 steps</SelectItem>
-                      <SelectItem value="36">36 steps</SelectItem>
-                      <SelectItem value="72">72 steps</SelectItem>
-                      <SelectItem value="144">144 steps</SelectItem>
-                      <SelectItem value="432">432 steps</SelectItem>
+                      <SelectItem value="1">1</SelectItem>
+                      <SelectItem value="72">72</SelectItem>
+                      <SelectItem value="432">432</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">Forecast {predictionLength} hours ahead</p>
+                  <p className="text-xs text-muted-foreground">Forecast {predictionLength} hour{predictionLength !== "1" ? "s" : ""} ahead</p>
                 </div>
 
-                {/* Dropout Rate */}
-                <div className="space-y-2">
-                  <Label htmlFor="dropout">Dropout Rate</Label>
-                  <div className="flex gap-2 items-center">
+                {/* Learning Rate - basic, centralized only */}
+                {mode === "centralized" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="lr-basic">Learning Rate</Label>
                     <input
-                      id="dropout"
-                      type="number"
-                      min="0"
-                      max="0.5"
-                      step="0.05"
-                      value={dropoutRate}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value)
-                        if (val >= 0 && val <= 0.5) {
-                          setDropoutRate(e.target.value)
-                        }
-                      }}
-                      className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      placeholder="0.2"
+                      id="lr-basic"
+                      type="text"
+                      inputMode="decimal"
+                      value={learningRate}
+                      onChange={(e) => setLearningRate(e.target.value)}
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      placeholder="0.0001329291894316216"
                     />
-                    <span className="text-sm text-muted-foreground font-mono">{dropoutRate}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">Regularization: 0.0 - 0.5</p>
-                </div>
+                )}
+
+                {/* Advanced toggle - centralized only */}
+                {mode === "centralized" && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvanced((v) => !v)}
+                      className="text-xs font-medium text-primary underline underline-offset-2 hover:no-underline"
+                    >
+                      {showAdvanced ? "▲ Hide Advanced Parameters" : "▼ Show Advanced Parameters"}
+                    </button>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {showAdvanced ? "Editing optimized defaults for pred-len " + predictionLength : "Using optimized defaults for pred-len " + predictionLength}
+                    </p>
+                  </div>
+                )}
+
+                {/* Advanced params - centralized only */}
+                {mode === "centralized" && showAdvanced && (
+                  <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Advanced Parameters</p>
+
+                    {/* Dropout Rate */}
+                    <div className="space-y-1">
+                      <Label htmlFor="dropout" className="text-xs">Dropout Rate</Label>
+                      <input id="dropout" type="number" min="0" max="0.5" step="0.05" value={dropoutRate}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value)
+                          if (val >= 0 && val <= 0.5) setDropoutRate(e.target.value)
+                        }}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        placeholder="0.2" />
+                    </div>
+
+                    {/* LLM Layers */}
+                    <div className="space-y-1">
+                      <Label htmlFor="cent-llm-layers" className="text-xs">LLM Layers</Label>
+                      <input id="cent-llm-layers" type="number" min="1" max="12" value={centLlmLayers}
+                        onChange={(e) => setCentLlmLayers(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                    </div>
+
+                    {/* Epochs */}
+                    <div className="space-y-1">
+                      <Label htmlFor="epochs" className="text-xs">Epochs (Rounds)</Label>
+                      <input id="epochs" type="number" min="1" max="100" value={epochs}
+                        onChange={(e) => setEpochs(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                    </div>
+
+                    {/* Batch Size */}
+                    <div className="space-y-1">
+                      <Label htmlFor="batch-size" className="text-xs">Batch Size</Label>
+                      <input id="batch-size" type="number" min="1" value={batchSize}
+                        onChange={(e) => setBatchSize(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                    </div>
+
+                    {/* Weight Decay */}
+                    <div className="space-y-1">
+                      <Label htmlFor="weight-decay" className="text-xs">Weight Decay</Label>
+                      <input id="weight-decay" type="text" inputMode="decimal" value={weightDecay}
+                        onChange={(e) => setWeightDecay(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                    </div>
+
+                    {/* Warmup Rounds */}
+                    <div className="space-y-1">
+                      <Label htmlFor="warmup" className="text-xs">Warmup Rounds</Label>
+                      <input id="warmup" type="number" min="0" value={warmupRounds}
+                        onChange={(e) => setWarmupRounds(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                    </div>
+
+                    {/* Patch Size / Stride */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label htmlFor="patch-size" className="text-xs">Patch Size</Label>
+                        <input id="patch-size" type="number" min="1" value={patchSize}
+                          onChange={(e) => setPatchSize(e.target.value)}
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="patch-stride" className="text-xs">Patch Stride</Label>
+                        <input id="patch-stride" type="number" min="1" value={patchStride}
+                          onChange={(e) => setPatchStride(e.target.value)}
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                      </div>
+                    </div>
+
+                    {/* Hidden Size */}
+                    <div className="space-y-1">
+                      <Label htmlFor="hidden-size" className="text-xs">Hidden Size</Label>
+                      <input id="hidden-size" type="number" min="1" value={hiddenSize}
+                        onChange={(e) => setHiddenSize(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                    </div>
+
+                    {/* Kernel Size */}
+                    <div className="space-y-1">
+                      <Label htmlFor="kernel-size" className="text-xs">Kernel Size</Label>
+                      <input id="kernel-size" type="number" min="1" value={kernelSize}
+                        onChange={(e) => setKernelSize(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                )}
 
                 {/* Training Mode */}
                 <div className="space-y-2">
                   <Label htmlFor="mode">Training Mode</Label>
-                  <Select value={mode} onValueChange={setMode}>
+                  <Select value={mode} onValueChange={handleModeChange}>
                     <SelectTrigger id="mode">
                       <SelectValue placeholder="Select mode" />
                     </SelectTrigger>
@@ -1206,96 +1398,149 @@ const renderConversationNode = (
                   </div>
                 )}
 
-                {/* Federated-only parameters */}
+                {/* Federated basic + advanced */}
                 {mode === "federated" && (
                   <>
+                    {/* Learning Rate - basic */}
+                    <div className="space-y-2">
+                      <Label htmlFor="fed-lr">Learning Rate</Label>
+                      <input
+                        id="fed-lr"
+                        type="text"
+                        inputMode="decimal"
+                        value={learningRate}
+                        onChange={(e) => setLearningRate(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      />
+                    </div>
+
                     {/* Number of Clients */}
                     <div className="space-y-2">
                       <Label htmlFor="clients">Number of Clients</Label>
                       <div className="flex gap-2 items-center">
-                        <input
-                          id="clients"
-                          type="number"
-                          min="1"
-                          max="10"
-                          value={numClients}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value)
-                            if (val >= 1 && val <= 10) setNumClients(e.target.value)
-                          }}
-                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                          placeholder="5"
-                        />
+                        <input id="clients" type="number" min="1" max="10" value={numClients}
+                          onChange={(e) => { const v = parseInt(e.target.value); if (v >= 1 && v <= 10) setNumClients(e.target.value) }}
+                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="5" />
                         <span className="text-sm text-muted-foreground font-mono">/ 10</span>
                       </div>
-                      <p className="text-xs text-muted-foreground">Participating clients: 1 - 10</p>
                     </div>
 
-                    {/* Number of Rounds */}
-                    <div className="space-y-2">
-                      <Label htmlFor="rounds">Communication Rounds</Label>
-                      <div className="flex gap-2 items-center">
-                        <input
-                          id="rounds"
-                          type="number"
-                          min="1"
-                          max="50"
-                          value={numRounds}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value)
-                            if (val >= 1 && val <= 50) setNumRounds(e.target.value)
-                          }}
-                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                          placeholder="5"
-                        />
-                        <span className="text-sm text-muted-foreground font-mono">/ 50</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">FL aggregation rounds</p>
+                    {/* Advanced toggle */}
+                    <div className="pt-1">
+                      <button type="button" onClick={() => setShowFedAdvanced((v) => !v)}
+                        className="text-xs font-medium text-primary underline underline-offset-2 hover:no-underline">
+                        {showFedAdvanced ? "▲ Hide Advanced Parameters" : "▼ Show Advanced Parameters"}
+                      </button>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {showFedAdvanced ? "Editing optimized defaults for pred-len " + predictionLength : "Using optimized defaults for pred-len " + predictionLength}
+                      </p>
                     </div>
 
-                    {/* Local Epochs */}
-                    <div className="space-y-2">
-                      <Label htmlFor="localEpochs">Local Epochs per Round</Label>
-                      <div className="flex gap-2 items-center">
-                        <input
-                          id="localEpochs"
-                          type="number"
-                          min="1"
-                          max="10"
-                          value={localEpochs}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value)
-                            if (val >= 1 && val <= 10) setLocalEpochs(e.target.value)
-                          }}
-                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                          placeholder="1"
-                        />
-                        <span className="text-sm text-muted-foreground font-mono">/ 10</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">Training epochs per client per round</p>
-                    </div>
+                    {/* Advanced panel */}
+                    {showFedAdvanced && (
+                      <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Advanced Parameters</p>
 
-                    {/* LLM Layers */}
-                    <div className="space-y-2">
-                      <Label htmlFor="llmLayers">LLM Layers</Label>
-                      <div className="flex gap-2 items-center">
-                        <input
-                          id="llmLayers"
-                          type="number"
-                          min="1"
-                          max="12"
-                          value={llmLayers}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value)
-                            if (val >= 1 && val <= 12) setLlmLayers(e.target.value)
-                          }}
-                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                          placeholder="4"
-                        />
-                        <span className="text-sm text-muted-foreground font-mono">/ 12</span>
+                        {/* Dropout */}
+                        <div className="space-y-1">
+                          <Label htmlFor="fed-dropout" className="text-xs">Dropout Rate</Label>
+                          <input id="fed-dropout" type="number" min="0" max="1" step="0.05" value={dropoutRate}
+                            onChange={(e) => setDropoutRate(e.target.value)}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        </div>
+
+                        {/* LLM Layers */}
+                        <div className="space-y-1">
+                          <Label htmlFor="fed-llm-layers" className="text-xs">LLM Layers</Label>
+                          <input id="fed-llm-layers" type="number" min="1" max="12" value={llmLayers}
+                            onChange={(e) => setLlmLayers(e.target.value)}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        </div>
+
+                        {/* Rounds */}
+                        <div className="space-y-1">
+                          <Label htmlFor="fed-rounds" className="text-xs">Communication Rounds</Label>
+                          <input id="fed-rounds" type="number" min="1" max="50" value={numRounds}
+                            onChange={(e) => setNumRounds(e.target.value)}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        </div>
+
+                        {/* Local Epochs */}
+                        <div className="space-y-1">
+                          <Label htmlFor="fed-local-epochs" className="text-xs">Local Epochs per Round</Label>
+                          <input id="fed-local-epochs" type="number" min="1" max="20" value={localEpochs}
+                            onChange={(e) => setLocalEpochs(e.target.value)}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        </div>
+
+                        {/* Batch Size */}
+                        <div className="space-y-1">
+                          <Label htmlFor="fed-batch" className="text-xs">Batch Size</Label>
+                          <input id="fed-batch" type="number" min="1" value={batchSize}
+                            onChange={(e) => setBatchSize(e.target.value)}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        </div>
+
+                        {/* Weight Decay */}
+                        <div className="space-y-1">
+                          <Label htmlFor="fed-wd" className="text-xs">Weight Decay</Label>
+                          <input id="fed-wd" type="text" inputMode="decimal" value={weightDecay}
+                            onChange={(e) => setWeightDecay(e.target.value)}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        </div>
+
+                        {/* Warmup Rounds */}
+                        <div className="space-y-1">
+                          <Label htmlFor="fed-warmup" className="text-xs">Warmup Rounds</Label>
+                          <input id="fed-warmup" type="number" min="0" value={warmupRounds}
+                            onChange={(e) => setWarmupRounds(e.target.value)}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        </div>
+
+                        {/* Patch Size / Stride */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label htmlFor="fed-patch-size" className="text-xs">Patch Size</Label>
+                            <input id="fed-patch-size" type="number" min="1" value={patchSize}
+                              onChange={(e) => setPatchSize(e.target.value)}
+                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="fed-patch-stride" className="text-xs">Patch Stride</Label>
+                            <input id="fed-patch-stride" type="number" min="1" value={patchStride}
+                              onChange={(e) => setPatchStride(e.target.value)}
+                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                          </div>
+                        </div>
+
+                        {/* Hidden Size */}
+                        <div className="space-y-1">
+                          <Label htmlFor="fed-hidden" className="text-xs">Hidden Size</Label>
+                          <input id="fed-hidden" type="number" min="1" value={hiddenSize}
+                            onChange={(e) => setHiddenSize(e.target.value)}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        </div>
+
+                        {/* Kernel Size */}
+                        <div className="space-y-1">
+                          <Label htmlFor="fed-kernel" className="text-xs">Kernel Size</Label>
+                          <input id="fed-kernel" type="number" min="1" value={kernelSize}
+                            onChange={(e) => setKernelSize(e.target.value)}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                        </div>
+
+                        {/* Proximal Mu (FedProx only) */}
+                        {federalAlgorithm === "FedProx" && (
+                          <div className="space-y-1">
+                            <Label htmlFor="fed-mu" className="text-xs">Proximal Mu (FedProx)</Label>
+                            <input id="fed-mu" type="text" inputMode="decimal" value={proximalMu}
+                              onChange={(e) => setProximalMu(e.target.value)}
+                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                              placeholder="0.0014270403521460836" />
+                          </div>
+                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground">Transformer layers used from the LLM backbone</p>
-                    </div>
+                    )}
                   </>
                 )}
 

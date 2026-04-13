@@ -122,15 +122,35 @@ def start_training(filename: str, config: TrainingConfig) -> TrainingResult:
                 rounds=config.num_rounds,
                 local_epochs=config.local_epochs,
                 llm_layers=config.llm_layers,
+                **({} if config.learning_rate is None else {"learning_rate": config.learning_rate}),
+                **({} if config.batch_size is None else {"batch_size": config.batch_size}),
+                **({} if config.proximal_mu is None else {"proximal_mu": config.proximal_mu}),
+                **({} if config.weight_decay is None else {"weight_decay": config.weight_decay}),
+                **({} if config.warmup_rounds is None else {"warmup_rounds": config.warmup_rounds}),
+                **({} if config.patch_size is None else {"patch_size": config.patch_size}),
+                **({} if config.patch_stride is None else {"patch_stride": config.patch_stride}),
+                **({} if config.hidden_size is None else {"hidden_size": config.hidden_size}),
+                **({} if config.kernel_size is None else {"kernel_size": config.kernel_size}),
             )
             output = run_federated_training(fed_input)
         else:
-            # Build centralized training input
+            # Build centralized training input — use advanced overrides if provided
             training_input = TrainingInput(
                 csv_path=file_path,
                 model_name=config.training_model.value,
                 prediction_length=config.prediction_length,
                 dropout_rate=config.dropout_rate,
+                **({} if config.learning_rate is None else {"learning_rate": config.learning_rate}),
+                **({} if config.batch_size is None else {"batch_size": config.batch_size}),
+                **({} if config.seq_len is None else {"seq_len": config.seq_len}),
+                **({} if config.epochs is None else {"epochs": config.epochs}),
+                **({} if config.llm_layers is None else {"llm_layers": config.llm_layers}),
+                **({} if config.weight_decay is None else {"weight_decay": config.weight_decay}),
+                **({} if config.warmup_rounds is None else {"warmup_rounds": config.warmup_rounds}),
+                **({} if config.patch_size is None else {"patch_size": config.patch_size}),
+                **({} if config.patch_stride is None else {"patch_stride": config.patch_stride}),
+                **({} if config.hidden_size is None else {"hidden_size": config.hidden_size}),
+                **({} if config.kernel_size is None else {"kernel_size": config.kernel_size}),
             )
             output = run_centralized_training(training_input)
     except Exception as e:

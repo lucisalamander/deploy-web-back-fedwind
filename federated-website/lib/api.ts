@@ -51,15 +51,27 @@ export interface UploadResponse {
 
 export interface TrainingConfig {
   training_model: string    // GPT4TS | LLAMA | BERT | BART
-  prediction_length: number // 1, 3, 6, 36, 72, 144, 432
+  prediction_length: number // 1, 72, 432
   dropout_rate: number      // 0.0 - 0.5
   mode: string              // centralized | federated
-  // Federated-only fields (ignored in centralized mode)
+  // Centralized advanced params
+  learning_rate?: number
+  batch_size?: number
+  seq_len?: number
+  epochs?: number
+  llm_layers?: number
+  weight_decay?: number
+  warmup_rounds?: number
+  patch_size?: number
+  patch_stride?: number
+  hidden_size?: number
+  kernel_size?: number
+  // Federated-only fields
   federated_algorithm: string  // FedAvg | FedProx | FedBN | FedPer | SCAFFOLD
   num_clients: number          // 1 - 10
   num_rounds: number           // 1 - 50
   local_epochs: number         // 1 - 10
-  llm_layers: number           // 1 - 12
+  proximal_mu?: number         // FedProx only
 }
 
 export interface TrainingMetrics {
