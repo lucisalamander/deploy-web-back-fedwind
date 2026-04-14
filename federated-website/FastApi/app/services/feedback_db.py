@@ -1,23 +1,25 @@
 import os
-import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Optional
 
-DB_PATH = "feedback/feedback.db"
+from dotenv import load_dotenv
+from psycopg import connect
+from psycopg.rows import dict_row
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set")
 
 
-def ensure_feedback_db_dir() -> None:
-    os.makedirs("feedback", exist_ok=True)
+def get_connection():
+    return connect(DATABASE_URL, row_factory=dict_row)
 
-
-def get_connection() -> sqlite3.Connection:
-    ensure_feedback_db_dir()
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
+print("Using PostgreSQL via DATABASE_URL")
 
 @contextmanager
 def db_cursor():
@@ -26,6 +28,9 @@ def db_cursor():
         cursor = conn.cursor()
         yield cursor
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -39,8 +44,6 @@ def utc_now() -> str:
 
 
 def init_feedback_db() -> None:
-    ensure_feedback_db_dir()
-
     with db_cursor() as cursor:
         cursor.execute(
             """
@@ -63,10 +66,10 @@ def init_feedback_db() -> None:
                 message_text TEXT NOT NULL,
                 context TEXT,
                 created_at TEXT NOT NULL,
-                is_public INTEGER NOT NULL DEFAULT 0,
+                is_public BOOLEAN NOT NULL DEFAULT FALSE,
                 telegram_message_id INTEGER,
                 reply_to_message_id TEXT,
-                FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
             )
             """
         )
@@ -99,7 +102,7 @@ def conversation_exists(conversation_id: str) -> bool:
             """
             SELECT id
             FROM conversations
-            WHERE id = ?
+            WHERE id = %s
             """,
             (conversation_id,),
         )
@@ -119,7 +122,7 @@ def create_conversation_with_user_message(
         cursor.execute(
             """
             INSERT INTO conversations (id, created_at, updated_at, status)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
             """,
             (conversation_id, now, now, "pending"),
         )
@@ -138,7 +141,7 @@ def create_conversation_with_user_message(
                 telegram_message_id,
                 reply_to_message_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 message_id,
@@ -148,7 +151,7 @@ def create_conversation_with_user_message(
                 message_text,
                 context,
                 now,
-                0,
+                False,
                 None,
                 None,
             ),
@@ -189,7 +192,7 @@ def create_user_follow_up_message(
                 telegram_message_id,
                 reply_to_message_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 message_id,
@@ -199,7 +202,7 @@ def create_user_follow_up_message(
                 message_text,
                 context,
                 now,
-                0,
+                False,
                 None,
                 reply_to_message_id,
             ),
@@ -208,8 +211,8 @@ def create_user_follow_up_message(
         cursor.execute(
             """
             UPDATE conversations
-            SET updated_at = ?, status = ?
-            WHERE id = ?
+            SET updated_at = %s, status = %s
+            WHERE id = %s
             """,
             (now, "pending", conversation_id),
         )
@@ -226,11 +229,12 @@ def set_message_telegram_id(message_id: str, telegram_message_id: int) -> None:
         cursor.execute(
             """
             UPDATE messages
-            SET telegram_message_id = ?
-            WHERE id = ?
+            SET telegram_message_id = %s
+            WHERE id = %s
             """,
             (telegram_message_id, message_id),
         )
+
 
 def get_first_user_message(conversation_id: str):
     with db_cursor() as cursor:
@@ -238,7 +242,7 @@ def get_first_user_message(conversation_id: str):
             """
             SELECT *
             FROM messages
-            WHERE conversation_id = ?
+            WHERE conversation_id = %s
               AND sender_type = 'user'
             ORDER BY created_at ASC
             LIMIT 1
@@ -273,9 +277,9 @@ def get_conversation_entries() -> list[dict]:
                 """
                 SELECT *
                 FROM messages
-                WHERE conversation_id = ?
+                WHERE conversation_id = %s
                   AND sender_type = 'developer'
-                  AND reply_to_message_id = ?
+                  AND reply_to_message_id = %s
                 ORDER BY created_at DESC
                 LIMIT 1
                 """,
@@ -321,7 +325,7 @@ def get_conversation_messages(conversation_id: str) -> list[dict]:
                 telegram_message_id,
                 reply_to_message_id
             FROM messages
-            WHERE conversation_id = ?
+            WHERE conversation_id = %s
             ORDER BY created_at ASC
             """,
             (conversation_id,),
@@ -360,7 +364,7 @@ def create_developer_answer(
             """
             SELECT id
             FROM conversations
-            WHERE id = ?
+            WHERE id = %s
             """,
             (conversation_id,),
         )
@@ -383,7 +387,7 @@ def create_developer_answer(
                 telegram_message_id,
                 reply_to_message_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 message_id,
@@ -393,7 +397,7 @@ def create_developer_answer(
                 answer_text,
                 None,
                 now,
-                1 if is_public else 0,
+                is_public,
                 None,
                 reply_to_message_id,
             ),
@@ -402,8 +406,8 @@ def create_developer_answer(
         cursor.execute(
             """
             UPDATE conversations
-            SET updated_at = ?, status = ?
-            WHERE id = ?
+            SET updated_at = %s, status = %s
+            WHERE id = %s
             """,
             (now, "answered", conversation_id),
         )
@@ -422,7 +426,7 @@ def get_user_message_target_by_telegram_message_id(telegram_message_id: int) -> 
             SELECT id, conversation_id
             FROM messages
             WHERE sender_type = 'user'
-              AND telegram_message_id = ?
+              AND telegram_message_id = %s
             ORDER BY created_at ASC
             LIMIT 1
             """,
@@ -464,10 +468,10 @@ def get_public_answers() -> list[dict]:
                 """
                 SELECT *
                 FROM messages
-                WHERE conversation_id = ?
+                WHERE conversation_id = %s
                   AND sender_type = 'developer'
-                  AND is_public = 1
-                  AND reply_to_message_id = ?
+                  AND is_public = TRUE
+                  AND reply_to_message_id = %s
                 ORDER BY created_at DESC
                 LIMIT 1
                 """,
@@ -499,7 +503,7 @@ def delete_conversation(conversation_id: str) -> bool:
             """
             SELECT id
             FROM conversations
-            WHERE id = ?
+            WHERE id = %s
             """,
             (conversation_id,),
         )
@@ -511,7 +515,7 @@ def delete_conversation(conversation_id: str) -> bool:
         cursor.execute(
             """
             DELETE FROM messages
-            WHERE conversation_id = ?
+            WHERE conversation_id = %s
             """,
             (conversation_id,),
         )
@@ -519,7 +523,7 @@ def delete_conversation(conversation_id: str) -> bool:
         cursor.execute(
             """
             DELETE FROM conversations
-            WHERE id = ?
+            WHERE id = %s
             """,
             (conversation_id,),
         )

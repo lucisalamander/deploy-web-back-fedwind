@@ -31,3 +31,5 @@ pydantic>=2.0.0
 python-dotenv
 #pip install requests (Telegram HTTP requests)
 requests
+
+psycopg[binary]>=3.2.0
