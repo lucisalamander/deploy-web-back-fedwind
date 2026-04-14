@@ -145,8 +145,11 @@ def run_federated_training(inp: FederatedTrainingInput) -> FederatedTrainingOutp
     logger.info(f"[STEP 5] Federation: {federation}")
 
     # ── STEP 6: Build --run-config override string ───────────────────────────
-    local_epochs = getattr(inp, "local_epochs", 1)
-    llm_layers   = getattr(inp, "llm_layers", 4)
+    local_epochs  = getattr(inp, "local_epochs", 1)
+    llm_layers    = getattr(inp, "llm_layers", 4)
+    proximal_mu   = getattr(inp, "proximal_mu", None)
+    warmup_rounds = getattr(inp, "warmup_rounds", None)
+    weight_decay  = getattr(inp, "weight_decay", None)
     run_config = (
         f'num-server-rounds={inp.rounds} '
         f'local-epochs={local_epochs} '
@@ -161,10 +164,18 @@ def run_federated_training(inp: FederatedTrainingInput) -> FederatedTrainingOutp
         f'num-clients={n} '
         f'dataset-name="KZMET"'
     )
+    if proximal_mu is not None:
+        run_config += f' proximal-mu={proximal_mu}'
+    if warmup_rounds is not None:
+        run_config += f' warmup-rounds={warmup_rounds}'
+    if weight_decay is not None:
+        run_config += f' weight-decay={weight_decay}'
     logger.info(f"[STEP 6] run-config: {run_config}")
 
     # ── STEP 7: Build command ─────────────────────────────────────────────────
     # flwr run must be called from inside the flower_app directory
+
+    # ── [ISSAI] Original command (conda + multi-GPU auto-select on ISSAI servers) ──
     cmd = [
         "bash", "-c",
         f"source /home/tin_trungchau/miniconda3/etc/profile.d/conda.sh && "
@@ -174,6 +185,12 @@ def run_federated_training(inp: FederatedTrainingInput) -> FederatedTrainingOutp
         f"echo \"Selected GPU: $CUDA_VISIBLE_DEVICES\" && "
         f"/home/tin_trungchau/miniconda3/envs/flwr39/bin/flwr run . {federation} --run-config '{run_config}'"
     ]
+
+    # ── [LOCAL Windows] Direct flwr call — no conda (uncomment when running locally) ──
+    # cmd = [
+    #     r"C:\Users\pcmc_\AppData\Local\Programs\Python\Python39\Scripts\flwr.exe",
+    #     "run", ".", federation, "--run-config", run_config,
+    # ]
 
     env = os.environ.copy()
     env["FLOWER_EXP_DIR"] = exp_dir  # server_app.py reads this to know where to save results

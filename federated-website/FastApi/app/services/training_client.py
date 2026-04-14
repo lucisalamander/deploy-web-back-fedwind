@@ -25,10 +25,14 @@ if not logger.handlers:
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
     
-TRAINING_REPO_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "Long-term_Forecasting", "flower_app")
+TRAINING_REPO_ROOT = os.environ.get(
+    "TRAINING_REPO_ROOT",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "Long-term_Forecasting", "flower_app"))
 )
-RUN_SCRIPT = os.path.join(TRAINING_REPO_ROOT, "run_centralized.py")
+RUN_SCRIPT = os.environ.get(
+    "RUN_SCRIPT",
+    os.path.join(TRAINING_REPO_ROOT, "run_centralized.py")
+)
 TRAINING_PYTHON = os.environ.get(
     "TRAINING_PYTHON",
     "/raid/tin_trungchau/conda_envs/flwr39/bin/python"
@@ -162,7 +166,7 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
         "export CUDA_VISIBLE_DEVICES=$(nvidia-smi --query-gpu=index,memory.used "
         "--format=csv,noheader,nounits | sort -t',' -k2 -n | head -1 | cut -d',' -f1 | tr -d ' ') && "
         "echo \"Selected GPU: $CUDA_VISIBLE_DEVICES\" && "
-        f"python {RUN_SCRIPT} "
+        f"{TRAINING_PYTHON} {RUN_SCRIPT} "
         f"--exp-dir {exp_dir} "
         f"--rounds {inp.epochs} "
         f"--pred-len {inp.prediction_length} "
@@ -171,6 +175,13 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
         f"--seq-len {inp.seq_len} "
         f"--dropout {inp.dropout_rate} "
         f"--model {internal_model} "
+        f"--llm-layers {inp.llm_layers} "
+        f"--weight-decay {inp.weight_decay} "
+        f"--warmup-rounds {inp.warmup_rounds} "
+        f"--patch-size {inp.patch_size} "
+        f"--patch-stride {inp.patch_stride} "
+        f"--hidden-size {inp.hidden_size} "
+        f"--kernel-size {inp.kernel_size} "
         f"--dataset-name KZMET"
     ]
 
@@ -186,7 +197,6 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     #     "--seq-len", str(inp.seq_len),
     #     "--dropout", str(inp.dropout_rate),
     #     "--model", internal_model,
-    #     "--dataset-name", "KZMET",
     #     "--llm-layers", str(inp.llm_layers),
     #     "--weight-decay", str(inp.weight_decay),
     #     "--warmup-rounds", str(inp.warmup_rounds),
@@ -194,6 +204,7 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     #     "--patch-stride", str(inp.patch_stride),
     #     "--hidden-size", str(inp.hidden_size),
     #     "--kernel-size", str(inp.kernel_size),
+    #     "--dataset-name", "KZMET",
     # ]
 
     env = os.environ.copy()
