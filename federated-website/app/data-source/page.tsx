@@ -218,7 +218,7 @@ export default function DataSourcePage() {
                     keeping only the column headers and data rows.
                   </p>
                   <p className="text-xs mt-2 font-mono bg-amber-100/50 p-2 rounded">
-                    Expected format: YEAR,MO,DY,HR,WS10M (with data rows below)
+                    Expected format: YEAR,MO,DY,HR,WS50M (with data rows below)
                   </p>
                 </InfoBox>
               </StaggerItem>
@@ -379,7 +379,7 @@ export default function DataSourcePage() {
                           Under "Wind/Pressure" section, select:
                         </p>
                         <p className="text-sm font-medium text-primary mt-2">
-                          ✓ Wind Speed at 10 Meters (WS10M)
+                          ✓ Wind Speed at 50 Meters (WS50M)
                         </p>
                       </div>
 
@@ -402,7 +402,7 @@ export default function DataSourcePage() {
 {/* 
                     <InfoBox type="note" title="Parameter Flexibility">
                       <p>
-                        While we recommend <strong>Wind Speed at 10 Meters (WS10M)</strong> as the primary parameter, 
+                        While we recommend <strong>Wind Speed at 10 Meters (WS50M)</strong> as the primary parameter, 
                         you may add additional meteorological variables depending on your forecasting requirements. 
                         Additional parameters may improve model accuracy but are optional.
                       </p>
@@ -462,7 +462,7 @@ export default function DataSourcePage() {
                     <div className="rounded-lg border border-accent/30 bg-background p-4 space-y-3">
                       <h4 className="font-semibold text-sm text-foreground">Expected Final Format:</h4>
                       <pre className="text-xs font-mono bg-muted p-3 rounded overflow-x-auto text-foreground">
-{`YEAR,MO,DY,HR,WS10M
+{`YEAR,MO,DY,HR,WS50M
 2026,1,1,0,8.65
 2026,1,1,1,8.42
 2026,1,1,2,7.55
@@ -494,7 +494,7 @@ export default function DataSourcePage() {
               <StaggerItem>
                 <InfoBox type="research" title="Data Format Flexibility">
                   <p>
-                    While the example shows the recommended format (YEAR, MO, DY, HR, WS10M), our system 
+                    While the example shows the recommended format (YEAR, MO, DY, HR, WS50M), our system 
                     is designed to be flexible. As part of our ongoing research, we are investigating 
                     various data formats and preprocessing approaches. The key requirement is clean, 
                     structured time-series data with wind speed measurements.

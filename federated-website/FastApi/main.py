@@ -51,7 +51,7 @@ Frontend (CSV + config)
 
 **Supported models:** GPT4TS, LLAMA, BERT, BART
 **Training modes:** centralized, federated (FedAvg, FedProx, FedBN, FedPer, SCAFFOLD)
-**CSV format:** NASA POWER hourly data (YEAR, MO, DY, HR, WS10M)
+**CSV format:** NASA POWER hourly data (YEAR, MO, DY, HR, WS50M)
 **Prediction lengths:** 1, 3, 6, 36, 72, 144, 432 steps
     """,
     docs_url="/docs",

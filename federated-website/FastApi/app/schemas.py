@@ -7,7 +7,7 @@ Defines the contract between:
   - FastAPI -> Training module (internal schemas)
 
 CSV Format (NASA POWER hourly data):
-  YEAR, MO, DY, HR, WS10M
+  YEAR, MO, DY, HR, WS50M
   2026,  1,  1,  0,  8.65
 """
 

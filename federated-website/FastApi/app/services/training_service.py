@@ -29,7 +29,7 @@ from app.services.federated_training_client import run_federated_training
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
 
 # Expected CSV columns from NASA POWER hourly data
-REQUIRED_COLUMNS = {"YEAR", "MO", "DY", "HR", "WS10M"}
+REQUIRED_COLUMNS = {"YEAR", "MO", "DY", "HR", "WS50M"}
 
 
 # ---------------------------------------------------------------------------

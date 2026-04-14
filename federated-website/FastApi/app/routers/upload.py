@@ -32,7 +32,7 @@ UPLOAD_DIR = "uploads"
     response_model=UploadResponse,
     summary="Upload a CSV file for centralized training",
     description=(
-        "Accepts a single CSV file (NASA POWER hourly format: YEAR,MO,DY,HR,WS10M). "
+        "Accepts a single CSV file (NASA POWER hourly format: YEAR,MO,DY,HR,WS50M). "
         "The file is saved to the uploads/ directory. Use the returned `filename` "
         "when calling POST /api/train."
     ),
