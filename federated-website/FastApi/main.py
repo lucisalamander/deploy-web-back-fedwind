@@ -105,7 +105,10 @@ async def startup_event():
     os.makedirs("models", exist_ok=True)
     os.makedirs("feedback", exist_ok=True)
 
-    init_feedback_db()
+    try:
+        init_feedback_db()
+    except Exception as e:
+        print(f"WARNING: Could not connect to PostgreSQL — feedback DB unavailable. ({e})")
 
     print()
     print("=" * 56)

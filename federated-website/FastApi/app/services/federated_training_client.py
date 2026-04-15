@@ -28,14 +28,8 @@ if not logger.handlers:
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
 
-TRAINING_REPO_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "Long-term_Forecasting", "flower_app")
-)
-
-TRAINING_PYTHON = os.environ.get(
-    "TRAINING_PYTHON",
-    "/home/tin_trungchau/miniconda3/envs/flwr39/bin/python"
-)
+TRAINING_REPO_ROOT = os.environ["TRAINING_REPO_ROOT"]
+TRAINING_PYTHON = os.environ["TRAINING_PYTHON"]
 
 MODEL_NAME_MAP = {
     "GPT4TS":        "gpt4ts_nonlinear",
@@ -95,7 +89,7 @@ def run_federated_training(inp: FederatedTrainingInput) -> FederatedTrainingOutp
     logger.info("  ✓ Repo verified")
 
     # ── STEP 2: Create experiment directory ──────────────────────────────────
-    exp_base = os.environ.get("CENTRALIZED_WEB_DIR", "/raid/tin_trungchau/tmp")
+    exp_base = os.environ["CENTRALIZED_WEB_DIR"]
     os.makedirs(exp_base, exist_ok=True)
     exp_dir = tempfile.mkdtemp(prefix="federated_web_", dir=exp_base)
     logger.info(f"[STEP 2] Experiment directory: {exp_dir}")
@@ -175,28 +169,20 @@ def run_federated_training(inp: FederatedTrainingInput) -> FederatedTrainingOutp
     # ── STEP 7: Build command ─────────────────────────────────────────────────
     # flwr run must be called from inside the flower_app directory
 
-    # ── [ISSAI] Original command (conda + multi-GPU auto-select on ISSAI servers) ──
-    cmd = [
-        "bash", "-c",
-        f"source /home/tin_trungchau/miniconda3/etc/profile.d/conda.sh && "
-        f"conda activate /home/tin_trungchau/miniconda3/envs/flwr39 && "
-        f"export CUDA_VISIBLE_DEVICES=$(nvidia-smi --query-gpu=index,memory.used "
-        f"--format=csv,noheader,nounits | sort -t',' -k2 -n | head -1 | cut -d',' -f1 | tr -d ' ') && "
-        f"echo \"Selected GPU: $CUDA_VISIBLE_DEVICES\" && "
-        f"/home/tin_trungchau/miniconda3/envs/flwr39/bin/flwr run . {federation} --run-config '{run_config}'"
-    ]
-
-    # ── [LOCAL Windows] Direct flwr call — no conda (uncomment when running locally) ──
-    # cmd = [
-    #     r"C:\Users\pcmc_\AppData\Local\Programs\Python\Python39\Scripts\flwr.exe",
-    #     "run", ".", federation, "--run-config", run_config,
-    # ]
-
     env = os.environ.copy()
     env["FLOWER_EXP_DIR"] = exp_dir  # server_app.py reads this to know where to save results
     env["PYTHONPATH"] = TRAINING_REPO_ROOT + (
         os.pathsep + env.get("PYTHONPATH", "") if env.get("PYTHONPATH") else ""
     )
+
+    # flwr executable: explicit override > auto-derive from TRAINING_PYTHON
+    flwr_exe = os.environ.get(
+        "FLWR_EXE",
+        os.path.join(os.path.dirname(TRAINING_PYTHON), "Scripts", "flwr.exe"),
+    )
+    env["RAY_TMPDIR"] = os.path.join(tempfile.gettempdir(), "ray")
+    os.makedirs(env["RAY_TMPDIR"], exist_ok=True)
+    cmd = [flwr_exe, "run", ".", federation, "--run-config", run_config]
 
     logger.info("=" * 70)
     logger.info(f"[STEP 7] LAUNCHING flwr run in {TRAINING_REPO_ROOT} ...")

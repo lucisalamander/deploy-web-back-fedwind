@@ -50,7 +50,7 @@ Router (train.py)
   │
   ▼
 Service (training_service.py)
-  │  - Validates CSV columns (YEAR, MO, DY, HR, WS10M)
+  │  - Validates CSV columns (YEAR, MO, DY, HR, WS50M)
   │  - Validates config ranges
   │  - Builds TrainingInput object
   │
@@ -132,13 +132,13 @@ Docs: http://localhost:8001/docs
 ## CSV Format (NASA POWER Hourly Data)
 
 ```csv
-YEAR,MO,DY,HR,WS10M
+YEAR,MO,DY,HR,WS50M
 2026,1,1,0,8.65
 2026,1,1,1,8.42
 2026,1,1,2,7.55
 ```
 
-- `WS10M` = Wind Speed at 10 meters (m/s)
+- `WS50M` = Wind Speed at 10 meters (m/s)
 - Hourly resolution
 - Source: NASA POWER Data Access Viewer
 
@@ -164,8 +164,8 @@ Response:
     "size_bytes": 18830,
     "rows": 1056,
     "columns": 5,
-    "column_names": ["YEAR", "MO", "DY", "HR", "WS10M"],
-    "preview": [{"YEAR": "2026", "MO": "1", "DY": "1", "HR": "0", "WS10M": "8.65"}]
+    "column_names": ["YEAR", "MO", "DY", "HR", "WS50M"],
+    "preview": [{"YEAR": "2026", "MO": "1", "DY": "1", "HR": "0", "WS50M": "8.65"}]
   }
 }
 ```

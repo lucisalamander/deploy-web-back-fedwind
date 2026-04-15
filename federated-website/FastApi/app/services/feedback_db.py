@@ -17,7 +17,7 @@ if not DATABASE_URL:
 
 
 def get_connection():
-    return connect(DATABASE_URL, row_factory=dict_row)
+    return connect(DATABASE_URL, row_factory=dict_row, connect_timeout=3)
 
 print("Using PostgreSQL via DATABASE_URL")
 

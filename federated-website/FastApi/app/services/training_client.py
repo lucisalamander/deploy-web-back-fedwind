@@ -25,18 +25,9 @@ if not logger.handlers:
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
     
-TRAINING_REPO_ROOT = os.environ.get(
-    "TRAINING_REPO_ROOT",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "Long-term_Forecasting", "flower_app"))
-)
-RUN_SCRIPT = os.environ.get(
-    "RUN_SCRIPT",
-    os.path.join(TRAINING_REPO_ROOT, "run_centralized.py")
-)
-TRAINING_PYTHON = os.environ.get(
-    "TRAINING_PYTHON",
-    "/raid/tin_trungchau/conda_envs/flwr39/bin/python"
-)
+TRAINING_REPO_ROOT = os.environ["TRAINING_REPO_ROOT"]
+RUN_SCRIPT = os.environ.get("RUN_SCRIPT", os.path.join(TRAINING_REPO_ROOT, "run_centralized.py"))
+TRAINING_PYTHON = os.environ["TRAINING_PYTHON"]
 
 MODEL_NAME_MAP = {
     "GPT4TS":       "gpt4ts_nonlinear",
@@ -108,7 +99,7 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
         logger.warning("  ⚠ torch check timed out — proceeding anyway")
 
     # ── STEP 3: Create experiment directory ──────────────────────────────
-    exp_base = os.environ.get("CENTRALIZED_WEB_DIR", "/raid/tin_trungchau/tmp")
+    exp_base = os.environ["CENTRALIZED_WEB_DIR"]
     os.makedirs(exp_base, exist_ok=True)
     exp_dir = tempfile.mkdtemp(prefix="centralized_web_", dir=exp_base)
     logger.info(f"[STEP 3] Experiment directory created: {exp_dir}")
@@ -158,54 +149,26 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     else:
         logger.info("[STEP 4a] No csv_path — training on existing KZMET data")
 
-    # ── [ISSAI] Original command (conda + multi-GPU auto-select on ISSAI servers) ──
     cmd = [
-        "bash", "-c",
-        "source /home/tin_trungchau/miniconda3/etc/profile.d/conda.sh && "
-        "conda activate /home/tin_trungchau/miniconda3/envs/flwr39 && "
-        "export CUDA_VISIBLE_DEVICES=$(nvidia-smi --query-gpu=index,memory.used "
-        "--format=csv,noheader,nounits | sort -t',' -k2 -n | head -1 | cut -d',' -f1 | tr -d ' ') && "
-        "echo \"Selected GPU: $CUDA_VISIBLE_DEVICES\" && "
-        f"{TRAINING_PYTHON} {RUN_SCRIPT} "
-        f"--exp-dir {exp_dir} "
-        f"--rounds {inp.epochs} "
-        f"--pred-len {inp.prediction_length} "
-        f"--lr {inp.learning_rate} "
-        f"--batch-size {inp.batch_size} "
-        f"--seq-len {inp.seq_len} "
-        f"--dropout {inp.dropout_rate} "
-        f"--model {internal_model} "
-        f"--llm-layers {inp.llm_layers} "
-        f"--weight-decay {inp.weight_decay} "
-        f"--warmup-rounds {inp.warmup_rounds} "
-        f"--patch-size {inp.patch_size} "
-        f"--patch-stride {inp.patch_stride} "
-        f"--hidden-size {inp.hidden_size} "
-        f"--kernel-size {inp.kernel_size} "
-        f"--dataset-name KZMET"
+        TRAINING_PYTHON,
+        RUN_SCRIPT,
+        "--exp-dir", exp_dir,
+        "--rounds", str(inp.epochs),
+        "--pred-len", str(inp.prediction_length),
+        "--lr", str(inp.learning_rate),
+        "--batch-size", str(inp.batch_size),
+        "--seq-len", str(inp.seq_len),
+        "--dropout", str(inp.dropout_rate),
+        "--model", internal_model,
+        "--llm-layers", str(inp.llm_layers),
+        "--weight-decay", str(inp.weight_decay),
+        "--warmup-rounds", str(inp.warmup_rounds),
+        "--patch-size", str(inp.patch_size),
+        "--stride", str(inp.patch_stride),
+        "--hidden-size", str(inp.hidden_size),
+        "--kernel-size", str(inp.kernel_size),
+        "--dataset-name", "KZMET",
     ]
-
-    # ── [LOCAL] Direct Python call — no conda, uses TRAINING_PYTHON from .env ──
-    # cmd = [
-    #     TRAINING_PYTHON,
-    #     RUN_SCRIPT,
-    #     "--exp-dir", exp_dir,
-    #     "--rounds", str(inp.epochs),
-    #     "--pred-len", str(inp.prediction_length),
-    #     "--lr", str(inp.learning_rate),
-    #     "--batch-size", str(inp.batch_size),
-    #     "--seq-len", str(inp.seq_len),
-    #     "--dropout", str(inp.dropout_rate),
-    #     "--model", internal_model,
-    #     "--llm-layers", str(inp.llm_layers),
-    #     "--weight-decay", str(inp.weight_decay),
-    #     "--warmup-rounds", str(inp.warmup_rounds),
-    #     "--patch-size", str(inp.patch_size),
-    #     "--patch-stride", str(inp.patch_stride),
-    #     "--hidden-size", str(inp.hidden_size),
-    #     "--kernel-size", str(inp.kernel_size),
-    #     "--dataset-name", "KZMET",
-    # ]
 
     env = os.environ.copy()
     existing_pypath = env.get("PYTHONPATH", "")

@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { PageLayout, StaggerContainer, StaggerItem } from "@/components/page-layout"
 import {
   uploadFile,
@@ -178,6 +178,18 @@ export default function DashboardPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingStep, setProcessingStep] = useState("")
   const [showResults, setShowResults] = useState(false)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (isProcessing) {
+      setElapsedSeconds(0)
+      timerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000)
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [isProcessing])
 
   // API state
   const [apiConnected, setApiConnected] = useState<boolean | null>(null)
@@ -1016,6 +1028,12 @@ const renderConversationNode = (
                     {mode === "federated" ? "Federated Training in Progress..." : "Centralized Training in Progress..."}
                   </h4>
                   <p className="text-sm text-muted-foreground">{processingStep}</p>
+                </div>
+                <div className="flex items-center gap-1.5 rounded-md bg-primary/10 px-3 py-1.5 text-primary">
+                  <Clock className="h-4 w-4" />
+                  <span className="font-mono text-sm font-semibold tabular-nums">
+                    {String(Math.floor(elapsedSeconds / 60)).padStart(2, "0")}:{String(elapsedSeconds % 60).padStart(2, "0")}
+                  </span>
                 </div>
               </div>
               <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-muted">
