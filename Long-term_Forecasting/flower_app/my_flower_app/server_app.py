@@ -556,7 +556,7 @@ def main(grid: Grid, context: Context) -> None:
     lora_alpha: int = context.run_config.get("lora-alpha", 16)
     lora_dropout: float = context.run_config.get("lora-dropout", 0.15)
     dropout: float = context.run_config.get("dropout", 0.15)
-    adalora_total_step = context.run_config.get("adalora-total-step", None)
+    adalora_total_step: int = context.run_config.get("adalora-total-step", -1)
     label_len: int = context.run_config.get("label-len", 48)
     enc_in: int = context.run_config.get("enc-in", 1)
     dec_in: int = context.run_config.get("dec-in", 1)

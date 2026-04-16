@@ -10,6 +10,7 @@ Responsibilities:
 
 import os
 import csv
+import requests
 from datetime import datetime
 from typing import List
 
@@ -24,6 +25,8 @@ from app.schemas import (
 )
 from app.services.training_client import run_centralized_training
 from app.services.federated_training_client import run_federated_training
+
+TRAINING_WORKER_URL = os.environ.get("TRAINING_WORKER_URL", "").rstrip("/")
 
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
@@ -84,6 +87,37 @@ def validate_config(config: TrainingConfig) -> None:
 # Main service function
 # ---------------------------------------------------------------------------
 
+def _proxy_to_worker(filename: str, config: TrainingConfig) -> TrainingResult:
+    """
+    Forward upload + train request to the local training worker machine
+    (reachable via TRAINING_WORKER_URL, e.g. a Cloudflare tunnel).
+    """
+    file_path = os.path.abspath(os.path.join(UPLOAD_DIR, filename))
+
+    # 1. Re-upload the file to the worker
+    with open(file_path, "rb") as f:
+        upload_resp = requests.post(
+            f"{TRAINING_WORKER_URL}/api/upload",
+            files={"file": (filename, f, "text/csv")},
+            timeout=30,
+        )
+    if not upload_resp.ok:
+        raise RuntimeError(f"Worker upload failed: {upload_resp.text}")
+
+    worker_filename = upload_resp.json()["file"]["filename"]
+
+    # 2. Forward the train request to the worker
+    train_resp = requests.post(
+        f"{TRAINING_WORKER_URL}/api/train",
+        json={"filename": worker_filename, "config": config.model_dump()},
+        timeout=3600,  # training can take a long time
+    )
+    if not train_resp.ok:
+        raise RuntimeError(f"Worker training failed: {train_resp.text}")
+
+    return TrainingResult(**train_resp.json())
+
+
 def start_training(filename: str, config: TrainingConfig) -> TrainingResult:
     """
     Unified training pipeline for both centralized and federated modes.
@@ -105,6 +139,10 @@ def start_training(filename: str, config: TrainingConfig) -> TrainingResult:
     # 2. Validate
     validate_csv(file_path)
     validate_config(config)
+
+    # 2b. If a remote training worker is configured, proxy the request there
+    if TRAINING_WORKER_URL:
+        return _proxy_to_worker(filename, config)
 
     # 3. Route based on mode
     is_federated = config.mode.value == "federated"

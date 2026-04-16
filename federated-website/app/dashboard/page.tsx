@@ -1941,7 +1941,7 @@ const renderConversationNode = (
                         <div className="flex flex-wrap gap-3">
                           {trainingResult?.download_training_summary && (
                             <a
-                              href={`http://localhost:8001${trainingResult.download_training_summary}`}
+                              href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}${trainingResult.download_training_summary}`}
                               download="training_summary.csv"
                               className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted/50 transition-colors"
                             >
@@ -1965,7 +1965,7 @@ const renderConversationNode = (
                           )}
                           {trainingResult?.download_timing_summary && (
                             <a
-                              href={`http://localhost:8001${trainingResult.download_timing_summary}`}
+                              href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}${trainingResult.download_timing_summary}`}
                               download="timing_summary.csv"
                               className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted/50 transition-colors"
                             >
