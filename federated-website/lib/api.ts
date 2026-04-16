@@ -11,10 +11,12 @@
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"
+const TRAINING_API_URL = process.env.NEXT_PUBLIC_TRAINING_API_URL || API_BASE_URL
 
 
-async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`
+async function apiFetch<T>(endpoint: string, options: RequestInit = {}, useTrainingWorker = false): Promise<T> {
+  const base = useTrainingWorker ? TRAINING_API_URL : API_BASE_URL
+  const url = `${base}${endpoint}`
   const response = await fetch(url, { ...options })
 
   if (!response.ok) {
@@ -209,7 +211,7 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
   return apiFetch<UploadResponse>("/api/upload", {
     method: "POST",
     body: formData,
-  })
+  }, true)
 }
 
 /**
@@ -225,7 +227,7 @@ export async function startTraining(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ filename, config }),
-  })
+  }, true)
 }
 
 /** GET /api/files  -  List all uploaded CSV files */
