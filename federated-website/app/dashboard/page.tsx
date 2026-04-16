@@ -954,7 +954,7 @@ const renderConversationNode = (
               <div>
                 <h4 className="font-semibold text-foreground">Checking API Connection...</h4>
                 <p className="text-sm text-muted-foreground">
-                  Attempting to connect to FastAPI backend at localhost:8000
+                  Attempting to connect to server
                 </p>
               </div>
             </>

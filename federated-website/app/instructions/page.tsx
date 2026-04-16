@@ -284,14 +284,13 @@ export default function InstructionsPage() {
                     title="Configure Training Parameters"
                     description="Choose your model, algorithm, and training settings on the dashboard."
                     details={[
-                      "Training Model: GPT4TS, LLAMA, BERT, BART, Qwen, Gemma or OPT",
-                      "FL Algorithm: FedAvg, FedProx, FedOPT, FedPer, FedLN or StatAvg",
-                      "Prediction Length: 1, 3, 6, 36, 72, 144, or 432 hours",
-                      "Number of Clients: 1-10 (for federated scenarios)",
-                      "Communication Rounds: 1-50 FL aggregation rounds",
-                      "Local Epochs per Round: 1-10 training epochs per client per round",
-                      "LLM Layers: 1-12 transformer layers used from the LLM backbone",
-                      "Dropout Rate: 0.0-0.5 for regularization",
+                      "Training Model: GPT4TS, LLaMA, BERT, BART, OPT, Gemma or Qwen",
+                      "FL Algorithm: FedAvg, FedProx, SCAFFOLD, StatAvg, FedPer or FedLN",
+                      "Prediction Length: 1, 72, or 432 steps",
+                      "Number of Clients: 1-10 simulated federated clients",
+                      "Communication Rounds: optimized default per prediction length (editable in Advanced)",
+                      "Local Epochs per Round: optimized default per prediction length (editable in Advanced)",
+                      "Advanced parameters (LLM layers, dropout, LR, batch size, etc.) are pre-filled with best-performing settings",
                     ]}
                   />
                   <StepCard
