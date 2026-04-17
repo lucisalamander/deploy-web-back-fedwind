@@ -47,7 +47,7 @@ MODEL_NAME_MAP = {
 }
 
 
-def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
+def run_centralized_training(inp: TrainingInput, job_id: str = None) -> TrainingOutput:
     """
     Execute centralized training by calling run_centralized.py as a subprocess.
     """
@@ -103,6 +103,10 @@ def run_centralized_training(inp: TrainingInput) -> TrainingOutput:
     os.makedirs(exp_base, exist_ok=True)
     exp_dir = tempfile.mkdtemp(prefix="centralized_web_", dir=exp_base)
     logger.info(f"[STEP 3] Experiment directory created: {exp_dir}")
+    if job_id:
+        from app.services.job_store import job_store
+        total_rounds = inp.epochs or 20
+        job_store.set_exp_dir(job_id, exp_dir, total_rounds)
 
     # ── STEP 4: Build command ─────────────────────────────────────────────
     internal_model = MODEL_NAME_MAP.get(inp.model_name, inp.model_name.lower())

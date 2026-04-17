@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api")
 def _run_training_job(job_id: str, filename: str, config):
     from app.services.training_service import start_training
     try:
-        result = start_training(filename, config)
+        result = start_training(filename, config, job_id=job_id)
         job_store.complete(job_id, result.model_dump())
     except ValueError as e:
         job_store.fail(job_id, str(e))

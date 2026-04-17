@@ -17,6 +17,7 @@ import {
   createFeedbackFollowUp,
   type HealthResponse,
   type TrainingResult,
+  type ProgressUpdate,
   type PublicAnswerItem,
   type ConversationMessageItem,
 } from "@/lib/api"
@@ -195,6 +196,8 @@ export default function DashboardPage() {
   const [apiConnected, setApiConnected] = useState<boolean | null>(null)
   const [apiHealth, setApiHealth] = useState<HealthResponse | null>(null)
   const [trainingResult, setTrainingResult] = useState<TrainingResult | null>(null)
+  const [liveForecast, setLiveForecast] = useState<{step: number, predicted: number, actual: number | null}[]>([])
+  const [liveRound, setLiveRound] = useState<{current: number, total: number} | null>(null)
   const [error, setError] = useState<string | null>(null)
   
   // File management state
@@ -803,6 +806,8 @@ const renderConversationNode = (
     setIsProcessing(true)
     setError(null)
     setTrainingResult(null)
+    setLiveForecast([])
+    setLiveRound(null)
 
     try {
       if (mode === "centralized") {
@@ -852,8 +857,14 @@ const renderConversationNode = (
           kernel_size: parseInt(kernelSize),
         }
 
-        const result = await startTraining(trainFilename, config)
+        const onProgress = (p: ProgressUpdate) => {
+          setLiveForecast(p.forecast)
+          setLiveRound({ current: p.round, total: p.total_rounds })
+          setShowResults(true)
+        }
+        const result = await startTraining(trainFilename, config, onProgress)
         setTrainingResult(result)
+        setLiveForecast([])
         setShowResults(true)
 
         // Reset file selection
@@ -905,8 +916,14 @@ const renderConversationNode = (
           ...(federalAlgorithm === "FedProx" && proximalMu ? { proximal_mu: parseFloat(proximalMu) } : {}),
         }
 
-        const result = await startTraining(trainFilename, config)
+        const onProgress = (p: ProgressUpdate) => {
+          setLiveForecast(p.forecast)
+          setLiveRound({ current: p.round, total: p.total_rounds })
+          setShowResults(true)
+        }
+        const result = await startTraining(trainFilename, config, onProgress)
         setTrainingResult(result)
+        setLiveForecast([])
         setShowResults(true)
 
         setFiles([])
@@ -1837,9 +1854,11 @@ const renderConversationNode = (
                       <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
                         <Wind className="h-4 w-4 text-primary" />
                         Wind Speed Forecast
-                        {trainingResult && trainingResult.forecast.length > 0 && (
+                        {(trainingResult || liveForecast.length > 0) && (
                           <span className="text-xs font-normal text-muted-foreground ml-1">
-                            — {trainingResult.forecast.length} steps (normalized scale)
+                            {liveRound && isProcessing
+                              ? `— Round ${liveRound.current}/${liveRound.total} (live)`
+                              : trainingResult ? `— ${trainingResult.forecast.length} steps (normalized scale)` : ""}
                           </span>
                         )}
                       </h4>
@@ -1848,13 +1867,19 @@ const renderConversationNode = (
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart
                             data={
-                              trainingResult && trainingResult.forecast.length > 0
+                              trainingResult && !isProcessing
                                 ? trainingResult.forecast.map((p) => ({
                                     label: `S${p.step}`,
                                     predicted: p.predicted,
                                     ...(p.actual !== null && p.actual !== undefined
                                       ? { actual: p.actual }
                                       : {}),
+                                  }))
+                                : liveForecast.length > 0
+                                ? liveForecast.map((p) => ({
+                                    label: `S${p.step}`,
+                                    predicted: p.predicted,
+                                    ...(p.actual !== null ? { actual: p.actual } : {}),
                                   }))
                                 : mockForecastData.map((d) => ({
                                     label: d.hour,
@@ -1941,7 +1966,7 @@ const renderConversationNode = (
                         <div className="flex flex-wrap gap-3">
                           {trainingResult?.download_training_summary && (
                             <a
-                              href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}${trainingResult.download_training_summary}`}
+                              href={`${process.env.NEXT_PUBLIC_TRAINING_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}${trainingResult.download_training_summary}`}
                               download="training_summary.csv"
                               className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted/50 transition-colors"
                             >
@@ -1965,7 +1990,7 @@ const renderConversationNode = (
                           )}
                           {trainingResult?.download_timing_summary && (
                             <a
-                              href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}${trainingResult.download_timing_summary}`}
+                              href={`${process.env.NEXT_PUBLIC_TRAINING_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}${trainingResult.download_timing_summary}`}
                               download="timing_summary.csv"
                               className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted/50 transition-colors"
                             >

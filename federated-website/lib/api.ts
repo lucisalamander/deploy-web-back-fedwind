@@ -219,10 +219,16 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
  * @param filename - The saved filename from uploadFile() response
  * @param config   - Training configuration from the dashboard form
  */
+export interface ProgressUpdate {
+  round: number
+  total_rounds: number
+  forecast: ForecastPoint[]
+}
+
 export async function startTraining(
   filename: string,
   config: TrainingConfig,
-  onStatus?: (status: string) => void,
+  onProgress?: (progress: ProgressUpdate) => void,
 ): Promise<TrainingResult> {
   // Submit job — returns immediately with job_id
   const { job_id } = await apiFetch<{ job_id: string; status: string }>("/api/train", {
@@ -231,13 +237,22 @@ export async function startTraining(
     body: JSON.stringify({ filename, config }),
   }, true)
 
-  // Poll until done
+  // Poll until done, updating chart with each round's predictions
   while (true) {
-    await new Promise(r => setTimeout(r, 5000)) // wait 5 seconds
+    await new Promise(r => setTimeout(r, 5000))
+
+    // Poll progress for live chart update
+    if (onProgress) {
+      try {
+        const progress = await apiFetch<ProgressUpdate>(`/api/job/${job_id}/progress`, {}, true)
+        if (progress.forecast.length > 0) onProgress(progress)
+      } catch { /* ignore progress errors */ }
+    }
+
+    // Poll job status
     const job = await apiFetch<{ status: string; result: TrainingResult | null; error: string | null }>(
       `/api/job/${job_id}`, {}, true
     )
-    if (onStatus) onStatus(job.status)
     if (job.status === "done" && job.result) return job.result
     if (job.status === "failed") throw new Error(job.error || "Training failed")
   }

@@ -118,7 +118,7 @@ def _proxy_to_worker(filename: str, config: TrainingConfig) -> TrainingResult:
     return TrainingResult(**train_resp.json())
 
 
-def start_training(filename: str, config: TrainingConfig) -> TrainingResult:
+def start_training(filename: str, config: TrainingConfig, job_id: str = None) -> TrainingResult:
     """
     Unified training pipeline for both centralized and federated modes.
 
@@ -190,7 +190,7 @@ def start_training(filename: str, config: TrainingConfig) -> TrainingResult:
                 **({} if config.hidden_size is None else {"hidden_size": config.hidden_size}),
                 **({} if config.kernel_size is None else {"kernel_size": config.kernel_size}),
             )
-            output = run_centralized_training(training_input)
+            output = run_centralized_training(training_input, job_id=job_id)
     except Exception as e:
         raise RuntimeError(f"Training failed: {str(e)}")
 
