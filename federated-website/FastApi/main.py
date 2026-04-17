@@ -25,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers.health import router as health_router
 from app.routers.upload import router as upload_router
 from app.routers.train import router as train_router
+from app.routers.jobs import router as jobs_router
 from app.routers.federated import router as federated_router
 from app.routers.feedback import router as feedback_router
 
@@ -96,6 +97,7 @@ app.add_middleware(
 app.include_router(health_router, tags=["Health"])
 app.include_router(upload_router, tags=["Upload"])
 app.include_router(train_router, tags=["Training"])
+app.include_router(jobs_router, tags=["Training"])
 app.include_router(federated_router, tags=["Federated"])
 app.include_router(feedback_router, tags=["Feedback"])
 app.include_router(download.router)

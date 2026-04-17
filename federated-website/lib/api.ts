@@ -222,12 +222,25 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
 export async function startTraining(
   filename: string,
   config: TrainingConfig,
+  onStatus?: (status: string) => void,
 ): Promise<TrainingResult> {
-  return apiFetch<TrainingResult>("/api/train", {
+  // Submit job — returns immediately with job_id
+  const { job_id } = await apiFetch<{ job_id: string; status: string }>("/api/train", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ filename, config }),
   }, true)
+
+  // Poll until done
+  while (true) {
+    await new Promise(r => setTimeout(r, 5000)) // wait 5 seconds
+    const job = await apiFetch<{ status: string; result: TrainingResult | null; error: string | null }>(
+      `/api/job/${job_id}`, {}, true
+    )
+    if (onStatus) onStatus(job.status)
+    if (job.status === "done" && job.result) return job.result
+    if (job.status === "failed") throw new Error(job.error || "Training failed")
+  }
 }
 
 /** GET /api/files  -  List all uploaded CSV files */

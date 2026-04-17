@@ -1,101 +1,68 @@
 """
 Training Router - Triggers centralized or federated model training.
 
-Endpoint:
-  POST /api/train  -  Start training with uploaded file + config
-
-Data flow:
-  Frontend (config + filename)
-    -> This router (validates request)
-    -> training_service.start_training()
-    -> training_client (centralized) OR federated_training_client (federated)
-    -> TrainingResult back to frontend
-
-The `mode` field in the config determines which training pipeline is used.
+Endpoints:
+  POST /api/train  -  Start training, returns job_id immediately
+  GET  /api/job/{job_id}  -  Poll job status (in jobs.py)
 """
 
+import threading
 from fastapi import APIRouter, HTTPException, status
-from app.schemas import TrainRequest, TrainingResult
-
+from app.schemas import TrainRequest
+from app.services.job_store import job_store
 
 router = APIRouter(prefix="/api")
 
 
+def _run_training_job(job_id: str, filename: str, config):
+    from app.services.training_service import start_training
+    try:
+        result = start_training(filename, config)
+        job_store.complete(job_id, result.model_dump())
+    except ValueError as e:
+        job_store.fail(job_id, str(e))
+    except RuntimeError as e:
+        job_store.fail(job_id, str(e))
+    except Exception as e:
+        job_store.fail(job_id, f"Unexpected error: {str(e)}")
+
+
 @router.post(
     "/train",
-    response_model=TrainingResult,
     summary="Start training (centralized or federated)",
     description=(
         "Triggers model training using a previously uploaded CSV file. "
-        "The `mode` field in config determines centralized vs federated. "
-        "For federated mode, `federated_algorithm` and `num_clients` are also used. "
-        "Returns metrics (MAE, RMSE, MAPE) and forecast predictions."
+        "Returns a job_id immediately. Poll GET /api/job/{job_id} for status and results."
     ),
 )
 async def train(request: TrainRequest):
-    """
-    Start training (centralized or federated).
+    # Basic validation before spawning thread
+    import os, csv
+    from app.services.training_service import UPLOAD_DIR, validate_csv, validate_config
 
-    Centralized request example:
-    {
-        "filename": "20260213_143022_POWER_Hourly_Data.csv",
-        "config": {
-            "training_model": "GPT4TS",
-            "prediction_length": 6,
-            "dropout_rate": 0.2,
-            "mode": "centralized"
-        }
-    }
-
-    Federated request example:
-    {
-        "filename": "20260213_143022_POWER_Hourly_Data.csv",
-        "config": {
-            "training_model": "GPT4TS",
-            "prediction_length": 6,
-            "dropout_rate": 0.2,
-            "mode": "federated",
-            "federated_algorithm": "FedAvg",
-            "num_clients": 5
-        }
-    }
-
-    Response example:
-    {
-        "success": true,
-        "message": "Federated training complete using GPT4TS with 6-step horizon (FedAvg)",
-        "model_name": "GPT4TS",
-        "prediction_length": 6,
-        "dropout_rate": 0.2,
-        "training_time_seconds": 3.21,
-        "metrics": { "mae": 0.7714, "rmse": 0.9884, "mape": 6.2 },
-        "forecast": [
-            { "step": 1, "predicted": 8.12, "actual": 8.20 },
-            { "step": 2, "predicted": 8.35, "actual": 8.50 }
-        ]
-    }
-    """
-    # Import here to keep router thin
-    from app.services.training_service import start_training
+    file_path = os.path.abspath(os.path.join(UPLOAD_DIR, request.filename))
+    if not os.path.isfile(file_path):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Uploaded file not found: {request.filename}",
+        )
 
     try:
-        result = start_training(request.filename, request.config)
-        return result
-
+        validate_csv(file_path)
+        validate_config(request.config)
     except ValueError as e:
-        # Validation errors (bad CSV, bad config)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(e),
         )
-    except RuntimeError as e:
-        # Training execution errors
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected error: {str(e)}",
-        )
+
+    # Create job and run training in background thread
+    job_id = job_store.create()
+    thread = threading.Thread(
+        target=_run_training_job,
+        args=(job_id, request.filename, request.config),
+        daemon=True,
+    )
+    thread.start()
+
+    return {"job_id": job_id, "status": "running"}
