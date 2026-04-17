@@ -232,7 +232,7 @@ export async function startTraining(
 
 /** GET /api/files  -  List all uploaded CSV files */
 export async function listUploadedFiles(): Promise<FileListResponse> {
-  return apiFetch<FileListResponse>("/api/files")
+  return apiFetch<FileListResponse>("/api/files", {}, true)
 }
 
 /** DELETE /api/files/{filename} */
@@ -241,7 +241,7 @@ export async function deleteUploadedFile(
 ): Promise<{ success: boolean; message: string }> {
   return apiFetch(`/api/files/${encodeURIComponent(filename)}`, {
     method: "DELETE",
-  })
+  }, true)
 }
 
 // ---- Federated mode (kept for existing UI) ----
