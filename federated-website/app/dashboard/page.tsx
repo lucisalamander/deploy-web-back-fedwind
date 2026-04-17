@@ -1918,15 +1918,16 @@ const renderConversationNode = (
                                 trainingResult && trainingResult.forecast.length > 0
                                   ? Number(value).toFixed(4)
                                   : `${Number(value).toFixed(2)} m/s`,
-                                name === "predicted" ? "Predicted" : "Actual",
+                                name,
                               ]}
                               labelFormatter={(label) => `${label}`}
                             />
                             <Legend wrapperStyle={{ fontSize: "12px" }} />
-                            {(!trainingResult ||
-                              trainingResult.forecast.some(
+                            {((liveForecast.length > 0 && liveForecast.some(p => p.actual !== null)) ||
+                              (trainingResult && trainingResult.forecast.some(
                                 (p) => p.actual !== null && p.actual !== undefined,
-                              )) && (
+                              )) ||
+                              (!trainingResult && liveForecast.length === 0)) && (
                               <Line
                                 type="monotone"
                                 dataKey="actual"
